@@ -1,0 +1,2449 @@
+--
+-- PostgreSQL database dump
+--
+
+-- Dumped from database version 10.16
+-- Dumped by pg_dump version 10.16
+
+SET statement_timeout = 0;
+SET lock_timeout = 0;
+SET idle_in_transaction_session_timeout = 0;
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = on;
+SELECT pg_catalog.set_config('search_path', '', false);
+SET check_function_bodies = false;
+SET xmloption = content;
+SET client_min_messages = warning;
+SET row_security = off;
+
+--
+-- Name: cobranza; Type: SCHEMA; Schema: -; Owner: postgres
+--
+
+CREATE SCHEMA cobranza;
+
+
+ALTER SCHEMA cobranza OWNER TO postgres;
+
+--
+-- Name: colas; Type: SCHEMA; Schema: -; Owner: postgres
+--
+
+CREATE SCHEMA colas;
+
+
+ALTER SCHEMA colas OWNER TO postgres;
+
+--
+-- Name: plpgsql; Type: EXTENSION; Schema: -; Owner: 
+--
+
+CREATE EXTENSION IF NOT EXISTS plpgsql WITH SCHEMA pg_catalog;
+
+
+--
+-- Name: EXTENSION plpgsql; Type: COMMENT; Schema: -; Owner: 
+--
+
+COMMENT ON EXTENSION plpgsql IS 'PL/pgSQL procedural language';
+
+
+--
+-- Name: aplicar_cobro(character varying, character varying, integer, integer, integer, integer, integer, integer, character varying, integer); Type: FUNCTION; Schema: cobranza; Owner: postgres
+--
+
+CREATE FUNCTION cobranza.aplicar_cobro(par_tx_referencia character varying, par_tx_monto character varying, par_id_banco integer, par_id_empresa integer, par_nu_consecutivo integer, par_nu_lote integer, par_in_modo integer, par_in_cero integer, par_tx_error character varying, par_st_cuota integer) RETURNS character varying
+    LANGUAGE plpgsql
+    AS $$
+DECLARE
+ var_retorno integer;
+ var_monto double precision;
+ var_retorno_2 character varying;
+begin 
+	if(par_in_modo=1 and par_in_cero=1) 
+	then
+		begin
+			select clie.id_cliente into var_retorno 
+			FROM cobranza.clientes clie,cobranza.cobros cobr 
+			where cobr.id_cliente=clie.id_cliente
+			and clie.id_banco=par_id_banco 
+			and clie.id_empresa=par_id_empresa 
+			and clie.tx_cuenta=par_tx_referencia
+			and clie.id_bitacora=par_nu_consecutivo
+			and cobr.nu_lote=par_nu_lote
+			and replace(round((cobr.mt_cobro::decimal),2)::varchar,'.','')=par_tx_monto 
+			and cobr.st_cobro=2
+			order by cobr.id_cliente;
+			if(var_retorno is not null) then
+				update cobranza.cobros 
+				set st_cobro=par_st_cuota, tx_error=par_tx_error
+				where id_cliente=var_retorno;
+			else
+				var_retorno=0;
+			end if;
+		end;
+	else
+		if(par_in_modo=1 and par_in_cero=0) 
+		then
+			begin
+				select clie.id_cliente into var_retorno 
+				FROM cobranza.clientes clie,cobranza.cobros cobr 
+				where cobr.id_cliente=clie.id_cliente
+				and clie.id_banco=par_id_banco 
+				and clie.id_empresa=par_id_empresa 
+				and clie.tx_cuenta=par_tx_referencia
+				and clie.id_bitacora=par_nu_consecutivo
+				and cobr.nu_lote=par_nu_lote
+				and cobr.mt_cobro= round(((par_tx_monto::integer)/100),2)
+				and cobr.st_cobro=2
+				order by cobr.id_cliente;
+				if(var_retorno is not null) then
+					update cobranza.cobros 
+					set st_cobro=par_st_cuota,  tx_error=par_tx_error
+					where id_cliente=var_retorno;
+				else
+					var_retorno=0;
+				end if;
+			end;
+		else
+			if(par_in_modo=2 and par_in_cero=1) 
+			then
+			raise notice 'Prima adicional %',par_tx_monto||'=='||par_tx_referencia||par_id_empresa  ;
+				begin
+					select clie.id_cliente 
+					 into var_retorno 
+					FROM cobranza.clientes clie,cobranza.cobros cobr 
+					where cobr.id_cliente=clie.id_cliente
+					and clie.id_banco=par_id_banco 
+					and clie.id_empresa=par_id_empresa 
+					and clie.id_cliente::integer=par_tx_referencia::integer
+					and clie.id_bitacora=par_nu_consecutivo
+					and cobr.nu_lote=par_nu_lote
+					and  replace(round((cobr.mt_cobro::decimal),2)::varchar,'.','')=par_tx_monto::varchar
+					and cobr.st_cobro=2
+					order by cobr.id_cliente;
+					raise notice 'retorno %',var_retorno ;
+					if(var_retorno is not null) then
+						update cobranza.cobros 
+						set st_cobro=par_st_cuota,  tx_error=par_tx_error
+						where id_cliente=var_retorno;
+					else
+						var_retorno=0;
+					end if;
+				end;
+			else
+				if(par_in_modo=2 and par_in_cero=0) 
+				then
+				raise notice 'Prima adicional %',par_tx_monto ;
+					begin
+						select clie.id_cliente into var_retorno 
+						FROM cobranza.clientes clie,cobranza.cobros cobr 
+						where cobr.id_cliente=clie.id_cliente
+						and clie.id_banco=par_id_banco 
+						and clie.id_empresa=par_id_empresa 
+						and clie.id_cliente::integer=par_tx_referencia::integer
+						and clie.id_bitacora=par_nu_consecutivo
+						and cobr.nu_lote=par_nu_lote
+						and cobr.mt_cobro=round(((par_tx_monto::BIGINT)/100),2)
+						and cobr.st_cobro=2
+						order by cobr.id_cliente;
+						if(var_retorno is not null) then
+							update cobranza.cobros 
+							set st_cobro=par_st_cuota,  tx_error=par_tx_error
+							where id_cliente=var_retorno;
+						else
+							var_retorno=0;
+						end if;
+					end;
+				else
+					var_retorno=0;
+				end if;
+			end if;
+		end if;
+	end if;
+	return var_retorno;
+	
+end;
+$$;
+
+
+ALTER FUNCTION cobranza.aplicar_cobro(par_tx_referencia character varying, par_tx_monto character varying, par_id_banco integer, par_id_empresa integer, par_nu_consecutivo integer, par_nu_lote integer, par_in_modo integer, par_in_cero integer, par_tx_error character varying, par_st_cuota integer) OWNER TO postgres;
+
+SET default_tablespace = '';
+
+SET default_with_oids = false;
+
+--
+-- Name: afiliados; Type: TABLE; Schema: cobranza; Owner: postgres
+--
+
+CREATE TABLE cobranza.afiliados (
+    id_afiliado integer NOT NULL,
+    id_banco integer,
+    nu_documento character varying(20),
+    id_empresa integer,
+    st_afiliado integer,
+    tp_documento character varying(10)
+);
+
+
+ALTER TABLE cobranza.afiliados OWNER TO postgres;
+
+--
+-- Name: afiliados_id_afiliado_seq; Type: SEQUENCE; Schema: cobranza; Owner: postgres
+--
+
+CREATE SEQUENCE cobranza.afiliados_id_afiliado_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE cobranza.afiliados_id_afiliado_seq OWNER TO postgres;
+
+--
+-- Name: afiliados_id_afiliado_seq; Type: SEQUENCE OWNED BY; Schema: cobranza; Owner: postgres
+--
+
+ALTER SEQUENCE cobranza.afiliados_id_afiliado_seq OWNED BY cobranza.afiliados.id_afiliado;
+
+
+--
+-- Name: bancos; Type: TABLE; Schema: cobranza; Owner: postgres
+--
+
+CREATE TABLE cobranza.bancos (
+    id_banco integer NOT NULL,
+    tx_banco character varying(255),
+    tx_codigo_operacion character varying(4),
+    st_banco integer,
+    fe_registro date,
+    id_usuario integer,
+    st_afiliacion integer,
+    co_banco integer
+);
+
+
+ALTER TABLE cobranza.bancos OWNER TO postgres;
+
+--
+-- Name: bancos_id_banco_seq; Type: SEQUENCE; Schema: cobranza; Owner: postgres
+--
+
+CREATE SEQUENCE cobranza.bancos_id_banco_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE cobranza.bancos_id_banco_seq OWNER TO postgres;
+
+--
+-- Name: bancos_id_banco_seq; Type: SEQUENCE OWNED BY; Schema: cobranza; Owner: postgres
+--
+
+ALTER SEQUENCE cobranza.bancos_id_banco_seq OWNED BY cobranza.bancos.id_banco;
+
+
+--
+-- Name: bitacoraarchivos; Type: TABLE; Schema: cobranza; Owner: postgres
+--
+
+CREATE TABLE cobranza.bitacoraarchivos (
+    id_bitacora integer NOT NULL,
+    id_empresa integer,
+    id_usuario integer,
+    tx_nombre character varying(255),
+    fe_registro date,
+    st_archivo integer,
+    id_consecutivo_empresa integer
+);
+
+
+ALTER TABLE cobranza.bitacoraarchivos OWNER TO postgres;
+
+--
+-- Name: bitacoraarchivos_id_bitacora_seq; Type: SEQUENCE; Schema: cobranza; Owner: postgres
+--
+
+CREATE SEQUENCE cobranza.bitacoraarchivos_id_bitacora_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE cobranza.bitacoraarchivos_id_bitacora_seq OWNER TO postgres;
+
+--
+-- Name: bitacoraarchivos_id_bitacora_seq; Type: SEQUENCE OWNED BY; Schema: cobranza; Owner: postgres
+--
+
+ALTER SEQUENCE cobranza.bitacoraarchivos_id_bitacora_seq OWNED BY cobranza.bitacoraarchivos.id_bitacora;
+
+
+--
+-- Name: clientes; Type: TABLE; Schema: cobranza; Owner: postgres
+--
+
+CREATE TABLE cobranza.clientes (
+    id_cliente integer NOT NULL,
+    tx_nombre character varying(200),
+    nu_telefono character varying(200),
+    tp_cuenta character varying(4),
+    tx_cuenta character varying(40),
+    id_banco integer,
+    id_empresa integer,
+    tx_documento character varying(20),
+    tp_documento character varying(4),
+    tx_grupo character varying(10),
+    tx_referencia character varying(100),
+    id_bitacora integer,
+    st_cliente character varying(255),
+    tx_apellido character varying(255),
+    tx_correo character varying(255),
+    st_afiliacion integer
+);
+
+
+ALTER TABLE cobranza.clientes OWNER TO postgres;
+
+--
+-- Name: clientes_id_cliente_seq; Type: SEQUENCE; Schema: cobranza; Owner: postgres
+--
+
+CREATE SEQUENCE cobranza.clientes_id_cliente_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE cobranza.clientes_id_cliente_seq OWNER TO postgres;
+
+--
+-- Name: clientes_id_cliente_seq; Type: SEQUENCE OWNED BY; Schema: cobranza; Owner: postgres
+--
+
+ALTER SEQUENCE cobranza.clientes_id_cliente_seq OWNED BY cobranza.clientes.id_cliente;
+
+
+--
+-- Name: cobros; Type: TABLE; Schema: cobranza; Owner: postgres
+--
+
+CREATE TABLE cobranza.cobros (
+    id_cobro integer NOT NULL,
+    mt_cobro double precision,
+    st_cobro integer,
+    fe_registro date,
+    id_cliente integer,
+    tx_error character varying(250),
+    fe_recepcion date,
+    nu_lote integer,
+    mt_cobros_str character varying(30),
+    nu_consecutivo integer,
+    tx_referencia character varying(30)
+);
+
+
+ALTER TABLE cobranza.cobros OWNER TO postgres;
+
+--
+-- Name: cobros_id_cobro_seq; Type: SEQUENCE; Schema: cobranza; Owner: postgres
+--
+
+CREATE SEQUENCE cobranza.cobros_id_cobro_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE cobranza.cobros_id_cobro_seq OWNER TO postgres;
+
+--
+-- Name: cobros_id_cobro_seq; Type: SEQUENCE OWNED BY; Schema: cobranza; Owner: postgres
+--
+
+ALTER SEQUENCE cobranza.cobros_id_cobro_seq OWNED BY cobranza.cobros.id_cobro;
+
+
+--
+-- Name: cuentas_bancarias; Type: TABLE; Schema: cobranza; Owner: postgres
+--
+
+CREATE TABLE cobranza.cuentas_bancarias (
+    id_cuenta_bancaria integer NOT NULL,
+    id_banco integer,
+    id_empresa integer,
+    tx_cuenta character varying(40),
+    st_cuenta_bancaria integer,
+    fe_registro date,
+    id_usuario bigint,
+    nu_comision double precision,
+    st_aplica_comision bigint,
+    tx_ruta_banco character varying(255),
+    tx_contrato_bancario character varying(20),
+    nu_consecutivo_lote integer
+);
+
+
+ALTER TABLE cobranza.cuentas_bancarias OWNER TO postgres;
+
+--
+-- Name: cuentas_bancarias_id_cuenta_bancaria_seq; Type: SEQUENCE; Schema: cobranza; Owner: postgres
+--
+
+CREATE SEQUENCE cobranza.cuentas_bancarias_id_cuenta_bancaria_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE cobranza.cuentas_bancarias_id_cuenta_bancaria_seq OWNER TO postgres;
+
+--
+-- Name: cuentas_bancarias_id_cuenta_bancaria_seq; Type: SEQUENCE OWNED BY; Schema: cobranza; Owner: postgres
+--
+
+ALTER SEQUENCE cobranza.cuentas_bancarias_id_cuenta_bancaria_seq OWNED BY cobranza.cuentas_bancarias.id_cuenta_bancaria;
+
+
+--
+-- Name: empresas; Type: TABLE; Schema: cobranza; Owner: postgres
+--
+
+CREATE TABLE cobranza.empresas (
+    id_empresa integer NOT NULL,
+    tx_empresa character varying(255),
+    tx_documento character varying(20),
+    tp_documento character varying(2),
+    st_empresa integer,
+    fe_registro date,
+    id_usuario integer,
+    id_contrato integer
+);
+
+
+ALTER TABLE cobranza.empresas OWNER TO postgres;
+
+--
+-- Name: empresas_id_empresa_seq; Type: SEQUENCE; Schema: cobranza; Owner: postgres
+--
+
+CREATE SEQUENCE cobranza.empresas_id_empresa_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE cobranza.empresas_id_empresa_seq OWNER TO postgres;
+
+--
+-- Name: empresas_id_empresa_seq; Type: SEQUENCE OWNED BY; Schema: cobranza; Owner: postgres
+--
+
+ALTER SEQUENCE cobranza.empresas_id_empresa_seq OWNED BY cobranza.empresas.id_empresa;
+
+
+--
+-- Name: estatus; Type: TABLE; Schema: cobranza; Owner: postgres
+--
+
+CREATE TABLE cobranza.estatus (
+    id_estatus integer NOT NULL,
+    tx_estatus character varying(255)
+);
+
+
+ALTER TABLE cobranza.estatus OWNER TO postgres;
+
+--
+-- Name: estatus_id_estatus_seq; Type: SEQUENCE; Schema: cobranza; Owner: postgres
+--
+
+CREATE SEQUENCE cobranza.estatus_id_estatus_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE cobranza.estatus_id_estatus_seq OWNER TO postgres;
+
+--
+-- Name: estatus_id_estatus_seq; Type: SEQUENCE OWNED BY; Schema: cobranza; Owner: postgres
+--
+
+ALTER SEQUENCE cobranza.estatus_id_estatus_seq OWNED BY cobranza.estatus.id_estatus;
+
+
+--
+-- Name: estructura_archivos; Type: TABLE; Schema: cobranza; Owner: postgres
+--
+
+CREATE TABLE cobranza.estructura_archivos (
+    id_estructura_archivo bigint NOT NULL,
+    id_banco bigint,
+    id_tipo_archivo bigint,
+    nu_inicio bigint,
+    nu_longitud bigint,
+    tx_columna character varying(255),
+    tx_descripcion character varying(255),
+    tx_orientacion_relleno character varying(255),
+    tx_posicion_archivo bigint,
+    tx_relleno character varying(255),
+    tx_valor_defecto character varying(255),
+    va_formato_fecha character varying(255),
+    tx_variable character varying(100),
+    tx_patron_regular character varying(100),
+    tx_entidad character varying(100),
+    st_campo integer,
+    tx_metodo character varying(100),
+    tx_transformar integer,
+    tx_caracter_delimitador character varying(3),
+    tx_estructura_archivo_rb integer,
+    in_relleno character varying(255),
+    va_fromato_fecha character varying(255)
+);
+
+
+ALTER TABLE cobranza.estructura_archivos OWNER TO postgres;
+
+--
+-- Name: tipo_documento; Type: TABLE; Schema: cobranza; Owner: postgres
+--
+
+CREATE TABLE cobranza.tipo_documento (
+    id_tipo_documento integer NOT NULL,
+    tx_documento character varying(2),
+    st_documento integer,
+    tx_tipo_documento character varying(255)
+);
+
+
+ALTER TABLE cobranza.tipo_documento OWNER TO postgres;
+
+--
+-- Name: tipo_documento_id_tipo_documento_seq; Type: SEQUENCE; Schema: cobranza; Owner: postgres
+--
+
+CREATE SEQUENCE cobranza.tipo_documento_id_tipo_documento_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE cobranza.tipo_documento_id_tipo_documento_seq OWNER TO postgres;
+
+--
+-- Name: tipo_documento_id_tipo_documento_seq; Type: SEQUENCE OWNED BY; Schema: cobranza; Owner: postgres
+--
+
+ALTER SEQUENCE cobranza.tipo_documento_id_tipo_documento_seq OWNED BY cobranza.tipo_documento.id_tipo_documento;
+
+
+--
+-- Name: tipos_archivo; Type: TABLE; Schema: cobranza; Owner: postgres
+--
+
+CREATE TABLE cobranza.tipos_archivo (
+    id_tipo_archivo integer NOT NULL,
+    tx_archivo character varying(300),
+    tx_formato character varying(10),
+    st_archivo integer,
+    fe_registro date,
+    id_usuario integer,
+    tp_archivo character varying(255),
+    ca_caracteres_cab integer,
+    ca_caracteres_det integer,
+    ca_caracteres_pie integer,
+    tx_caracter_csv character varying(5)
+);
+
+
+ALTER TABLE cobranza.tipos_archivo OWNER TO postgres;
+
+--
+-- Name: tipos_archivo_id_tipo_archivo_seq; Type: SEQUENCE; Schema: cobranza; Owner: postgres
+--
+
+CREATE SEQUENCE cobranza.tipos_archivo_id_tipo_archivo_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE cobranza.tipos_archivo_id_tipo_archivo_seq OWNER TO postgres;
+
+--
+-- Name: tipos_archivo_id_tipo_archivo_seq; Type: SEQUENCE OWNED BY; Schema: cobranza; Owner: postgres
+--
+
+ALTER SEQUENCE cobranza.tipos_archivo_id_tipo_archivo_seq OWNED BY cobranza.tipos_archivo.id_tipo_archivo;
+
+
+--
+-- Name: usuarios; Type: TABLE; Schema: cobranza; Owner: postgres
+--
+
+CREATE TABLE cobranza.usuarios (
+    id_usuario integer NOT NULL,
+    tx_usuario character varying(20),
+    tx_clave character varying(255),
+    id_empresa integer,
+    st_usuario integer,
+    fe_registro date,
+    tx_descripcion character varying(200)
+);
+
+
+ALTER TABLE cobranza.usuarios OWNER TO postgres;
+
+--
+-- Name: usuarios_id_usuario_seq; Type: SEQUENCE; Schema: cobranza; Owner: postgres
+--
+
+CREATE SEQUENCE cobranza.usuarios_id_usuario_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE cobranza.usuarios_id_usuario_seq OWNER TO postgres;
+
+--
+-- Name: usuarios_id_usuario_seq; Type: SEQUENCE OWNED BY; Schema: cobranza; Owner: postgres
+--
+
+ALTER SEQUENCE cobranza.usuarios_id_usuario_seq OWNED BY cobranza.usuarios.id_usuario;
+
+
+--
+-- Name: ordenes; Type: TABLE; Schema: colas; Owner: postgres
+--
+
+CREATE TABLE colas.ordenes (
+    nu_secuencia bigint NOT NULL,
+    parametro_uno character varying(300),
+    parametro_dos character varying(300),
+    parametro_tres character varying(300),
+    parametro_cuatro character varying(300),
+    fe_registro timestamp with time zone,
+    fe_termino timestamp with time zone,
+    nu_cola integer,
+    st_orden integer,
+    nu_programa integer,
+    id_usuario integer,
+    parametro_cinco character varying(300),
+    parametro_seis character varying(300),
+    tx_ruta_archivos character varying(1000)
+);
+
+
+ALTER TABLE colas.ordenes OWNER TO postgres;
+
+--
+-- Name: ordenes_nu_secuencia_seq; Type: SEQUENCE; Schema: colas; Owner: postgres
+--
+
+CREATE SEQUENCE colas.ordenes_nu_secuencia_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE colas.ordenes_nu_secuencia_seq OWNER TO postgres;
+
+--
+-- Name: ordenes_nu_secuencia_seq; Type: SEQUENCE OWNED BY; Schema: colas; Owner: postgres
+--
+
+ALTER SEQUENCE colas.ordenes_nu_secuencia_seq OWNED BY colas.ordenes.nu_secuencia;
+
+
+--
+-- Name: programas; Type: TABLE; Schema: colas; Owner: postgres
+--
+
+CREATE TABLE colas.programas (
+    nu_programa integer NOT NULL,
+    tx_programa character varying(200),
+    st_programa integer
+);
+
+
+ALTER TABLE colas.programas OWNER TO postgres;
+
+--
+-- Name: programas_nu_programa_seq; Type: SEQUENCE; Schema: colas; Owner: postgres
+--
+
+CREATE SEQUENCE colas.programas_nu_programa_seq
+    AS integer
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE colas.programas_nu_programa_seq OWNER TO postgres;
+
+--
+-- Name: programas_nu_programa_seq; Type: SEQUENCE OWNED BY; Schema: colas; Owner: postgres
+--
+
+ALTER SEQUENCE colas.programas_nu_programa_seq OWNED BY colas.programas.nu_programa;
+
+
+--
+-- Name: configuraciones_archivos; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.configuraciones_archivos (
+    id_configuracion bigint NOT NULL,
+    fe_registro bigint,
+    id_banco bigint,
+    id_empresa bigint,
+    id_tipo_archivo bigint,
+    id_usuario bigint,
+    st_configuracion bigint,
+    tx_caracter_separador bigint,
+    tx_formato bigint
+);
+
+
+ALTER TABLE public.configuraciones_archivos OWNER TO postgres;
+
+--
+-- Name: hibernate_sequence; Type: SEQUENCE; Schema: public; Owner: postgres
+--
+
+CREATE SEQUENCE public.hibernate_sequence
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER TABLE public.hibernate_sequence OWNER TO postgres;
+
+--
+-- Name: var_retorno; Type: TABLE; Schema: public; Owner: postgres
+--
+
+CREATE TABLE public.var_retorno (
+    id_cliente integer
+);
+
+
+ALTER TABLE public.var_retorno OWNER TO postgres;
+
+--
+-- Name: afiliados id_afiliado; Type: DEFAULT; Schema: cobranza; Owner: postgres
+--
+
+ALTER TABLE ONLY cobranza.afiliados ALTER COLUMN id_afiliado SET DEFAULT nextval('cobranza.afiliados_id_afiliado_seq'::regclass);
+
+
+--
+-- Name: bancos id_banco; Type: DEFAULT; Schema: cobranza; Owner: postgres
+--
+
+ALTER TABLE ONLY cobranza.bancos ALTER COLUMN id_banco SET DEFAULT nextval('cobranza.bancos_id_banco_seq'::regclass);
+
+
+--
+-- Name: bitacoraarchivos id_bitacora; Type: DEFAULT; Schema: cobranza; Owner: postgres
+--
+
+ALTER TABLE ONLY cobranza.bitacoraarchivos ALTER COLUMN id_bitacora SET DEFAULT nextval('cobranza.bitacoraarchivos_id_bitacora_seq'::regclass);
+
+
+--
+-- Name: clientes id_cliente; Type: DEFAULT; Schema: cobranza; Owner: postgres
+--
+
+ALTER TABLE ONLY cobranza.clientes ALTER COLUMN id_cliente SET DEFAULT nextval('cobranza.clientes_id_cliente_seq'::regclass);
+
+
+--
+-- Name: cobros id_cobro; Type: DEFAULT; Schema: cobranza; Owner: postgres
+--
+
+ALTER TABLE ONLY cobranza.cobros ALTER COLUMN id_cobro SET DEFAULT nextval('cobranza.cobros_id_cobro_seq'::regclass);
+
+
+--
+-- Name: cuentas_bancarias id_cuenta_bancaria; Type: DEFAULT; Schema: cobranza; Owner: postgres
+--
+
+ALTER TABLE ONLY cobranza.cuentas_bancarias ALTER COLUMN id_cuenta_bancaria SET DEFAULT nextval('cobranza.cuentas_bancarias_id_cuenta_bancaria_seq'::regclass);
+
+
+--
+-- Name: empresas id_empresa; Type: DEFAULT; Schema: cobranza; Owner: postgres
+--
+
+ALTER TABLE ONLY cobranza.empresas ALTER COLUMN id_empresa SET DEFAULT nextval('cobranza.empresas_id_empresa_seq'::regclass);
+
+
+--
+-- Name: estatus id_estatus; Type: DEFAULT; Schema: cobranza; Owner: postgres
+--
+
+ALTER TABLE ONLY cobranza.estatus ALTER COLUMN id_estatus SET DEFAULT nextval('cobranza.estatus_id_estatus_seq'::regclass);
+
+
+--
+-- Name: tipo_documento id_tipo_documento; Type: DEFAULT; Schema: cobranza; Owner: postgres
+--
+
+ALTER TABLE ONLY cobranza.tipo_documento ALTER COLUMN id_tipo_documento SET DEFAULT nextval('cobranza.tipo_documento_id_tipo_documento_seq'::regclass);
+
+
+--
+-- Name: tipos_archivo id_tipo_archivo; Type: DEFAULT; Schema: cobranza; Owner: postgres
+--
+
+ALTER TABLE ONLY cobranza.tipos_archivo ALTER COLUMN id_tipo_archivo SET DEFAULT nextval('cobranza.tipos_archivo_id_tipo_archivo_seq'::regclass);
+
+
+--
+-- Name: usuarios id_usuario; Type: DEFAULT; Schema: cobranza; Owner: postgres
+--
+
+ALTER TABLE ONLY cobranza.usuarios ALTER COLUMN id_usuario SET DEFAULT nextval('cobranza.usuarios_id_usuario_seq'::regclass);
+
+
+--
+-- Name: ordenes nu_secuencia; Type: DEFAULT; Schema: colas; Owner: postgres
+--
+
+ALTER TABLE ONLY colas.ordenes ALTER COLUMN nu_secuencia SET DEFAULT nextval('colas.ordenes_nu_secuencia_seq'::regclass);
+
+
+--
+-- Name: programas nu_programa; Type: DEFAULT; Schema: colas; Owner: postgres
+--
+
+ALTER TABLE ONLY colas.programas ALTER COLUMN nu_programa SET DEFAULT nextval('colas.programas_nu_programa_seq'::regclass);
+
+
+--
+-- Data for Name: afiliados; Type: TABLE DATA; Schema: cobranza; Owner: postgres
+--
+
+COPY cobranza.afiliados (id_afiliado, id_banco, nu_documento, id_empresa, st_afiliado, tp_documento) FROM stdin;
+\.
+
+
+--
+-- Data for Name: bancos; Type: TABLE DATA; Schema: cobranza; Owner: postgres
+--
+
+COPY cobranza.bancos (id_banco, tx_banco, tx_codigo_operacion, st_banco, fe_registro, id_usuario, st_afiliacion, co_banco) FROM stdin;
+1	Banco Occidental de Descuento	0116	1	2021-02-01	14	1	19
+2	Banco Banesco	0134	1	2021-03-01	14	1	14
+5	Banco Caribe	0114	1	2021-01-03	14	1	6
+6	Banco Mercantil	0105	1	2021-01-03	14	1	12
+7	Banco Fondo Común	0151	1	2021-01-03	14	1	13
+8	Cobranza Empresarial	0000	1	2021-01-03	14	1	99
+9	Banco Nacional de Credito	0191	1	2021-03-01	14	1	23
+10	Banco del Tesoro	0163	1	2021-01-03	14	1	32
+11	Banco Bicentenario	0175	1	2021-01-03	14	1	30
+3	Banco de Venezuela	0102	1	2021-01-03	14	0	3
+4	Banco provincial	0108	1	2021-01-03	14	0	1
+\.
+
+
+--
+-- Data for Name: bitacoraarchivos; Type: TABLE DATA; Schema: cobranza; Owner: postgres
+--
+
+COPY cobranza.bitacoraarchivos (id_bitacora, id_empresa, id_usuario, tx_nombre, fe_registro, st_archivo, id_consecutivo_empresa) FROM stdin;
+34	1	17	999999_2104202154400751.txt	2021-04-30	2	45
+39	1	17	999999_0305202154431834.txt	2021-05-03	2	52
+40	1	17	999999_1305202154686849.txt	2021-05-13	2	53
+42	1	17	999999_1805202154706149.txt	2021-05-18	2	56
+43	1	17	999999_1805202154706149.txt	2021-05-18	7	57
+41	1	17	999999_1305202154687810.txt	2021-05-13	2	55
+44	1	17	999999_1805202154706149.txt	2021-05-18	2	59
+45	1	17	999999_2505202154756950.txt	2021-05-25	2	58
+46	1	17	999999_2605202154757373.txt	2021-05-26	2	60
+47	1	1	999999_0206202154798710.txt	2021-06-02	2	61
+48	1	17	999999_0306202154801644.txt	2021-06-03	2	63
+49	1	17	999999_0706202155454778.txt	2021-06-07	2	64
+50	1	17	999999_0806202155455189.txt	2021-06-08	2	67
+51	1	17	999999_1106202155533835.txt	2021-06-11	2	68
+52	1	17	999999_1106202155534364.txt	2021-06-11	2	69
+54	1	17	999999_1606202155542683.txt	2021-06-16	2	70
+57	1	17	999999_0207202155768838.txt	2021-07-02	1	75
+55	1	17	999999_2106202155584940.txt	2021-06-21	2	71
+56	1	17	999999_2206202155586689.txt	2021-06-22	2	72
+\.
+
+
+--
+-- Data for Name: clientes; Type: TABLE DATA; Schema: cobranza; Owner: postgres
+--
+
+COPY cobranza.clientes (id_cliente, tx_nombre, nu_telefono, tp_cuenta, tx_cuenta, id_banco, id_empresa, tx_documento, tp_documento, tx_grupo, tx_referencia, id_bitacora, st_cliente, tx_apellido, tx_correo, st_afiliacion) FROM stdin;
+291	Maida	4143315237	CO	01080018890100320108	1	1	81754855	E	AA	41 1016414	51	1	Blanco	\N	\N
+249	Junior		AH	01020486100108796491	3	1	13800752	V	AA	40 537178	41	1	Blanco	\N	\N
+250	Junior	4142292315	AH	01020486100108796491	3	1	13800752	V	AA	41 1016325	41	1	Blanco	\N	\N
+238	ISABEL		AH	01020213260100078417	3	1	5703259	V	AA	41 1016299	41	1	CAMPOS	\N	\N
+196	VALENTIN	4127238793	CO	01080026960100261938	1	1	11409926	V	AA	41 1016246	34	1	MORALES	\N	\N
+199	Desiree		AH	01340350323502098143	14	1	15833900	V	AA	40 537167	41	1	Arroyo	\N	\N
+260	Rosemary	4149044623	AH	01020489530102193520	3	1	19292593	V	AA	41 1016303	47	1	Torres	\N	\N
+253	REMIGIO		AH	01050095870095107312	12	1	6094763	V	AA	41 1016332	44	1	LONGA	\N	1
+261	JHAIR	4241918154	CO	01020275260000197094	3	1	10480661	V	AA	41 1016367	47	1	GONZALEZ	\N	\N
+262	ADELAIDA		AH	01020106330100046840	3	1	11934472	V	AA	40 537187	47	1	RIVAS	\N	\N
+197	JOSE	4141269823	CO	01050035401035489864	12	1	10331843	V	AA	41 1016282	44	1	RIVERO	\N	1
+198	JANETH		AH	01340288462882135570	14	1	13118345	V	AA	40 537173	45	1	MEDINA	\N	\N
+242	MICHELLE	4241114867	CO	01341010120001003548	14	1	21071151	V	AA	41 1016297	45	1	CARRILLO	\N	\N
+254	Elena		AH	01050603407603023742	12	1	6551284	V	AA	40 537172	45	1	Galicia	\N	1
+263	Carmen		CO	01020383010000274755	3	1	8752371	V	AA	40 537203	47	1	Morales	\N	\N
+237	Fiorella		CO	01080282260100233198	1	1	17677440	V	AA	40 537161	45	1	Gomez	\N	\N
+239	Jesús		CO	01080017080100300454	1	1	17920996	V	AA	40 537162	45	1	Aponte	\N	\N
+240	VALENTIN		CO	01080026960100261938	1	1	11409926	V	AA	40 537159	45	1	MORALES	\N	\N
+194	RICHARD	4142038462	CO	01080100100100124398	1	1	6857279	V	AA	41 1016291	45	1	SUTIL	\N	\N
+256	Milagros	4141200530	CO	01020491700000121280	3	1	4818770	V	AA	41 1016353	46	1	Cabello	\N	\N
+248	Junior		AH	01020486100108796491	3	1	13800752	V	AA	40 537177	46	1	Blanco	\N	\N
+200	Yamileth	4126176784	AH	01160084100187756457	19	1	6225838	V	AA	41 1016281	46	1	Ramos	\N	\N
+255	ISABEL		AH	01020213260100078417	3	1	5703259	V	AA	41 1016343	46	1	CAMPOS	\N	\N
+257	Crisol		CO	01080239320100059185	1	1	9966816	V	AA	41 1016382	47	1	Reyes	\N	\N
+258	Mary	4242765144	AH	01080112550200160028	1	1	11084155	V	AA	41 1016363	47	1	Almeida	\N	\N
+259	Gladys		CO	01020105540000313988	3	1	5891273	V	AA	40 537186	47	1	Urbina	\N	\N
+264	SHEILA		AH	01020169170100012799	3	1	14140653	V	AA	41 1016373	47	1	USECHE	\N	\N
+265	ADELAIDA		AH	01020106330100046840	3	1	11934472	V	AA	40 537191	47	1	RIVAS	\N	\N
+266	LUCIANGELI	4129912425	CO	01020738080000153708	3	1	20995640	V	AA	41 1016357	47	1	ESCALONA	\N	\N
+267	Heidy		AH	01020501850109323052	3	1	13697686	V	AA	41 1016361	47	1	Navarro	\N	\N
+268	Gregorio	4166207348	CO	01020133190000126191	3	1	4847222	V	AA	41 1016377	47	1	LaCruz	\N	\N
+269	Carmen		CO	01020383010000274755	3	1	8752371	V	AA	41 1016384	47	1	Morales	\N	\N
+270	JANETTE	4169148211	CO	01020122570000176141	3	1	6164568	V	AA	41 1016370	47	1	BLANCO	\N	\N
+271	Gladys	4127145200	CO	01020105540000313988	3	1	5891273	V	AA	41 1016371	47	1	Urbina	\N	\N
+272	YOLIBEL		AH	01020139050100023276	3	1	12410890	V	AA	40 537189	47	1	PUENTE	\N	\N
+273	YUVIDI	4241032987	CO	01020105590000073930	3	1	10814776	V	AA	41 1016389	47	1	BLANCO	\N	\N
+244	JOSE	4129906440	CO	01080009910100067497	1	1	9418160	V	AA	41 1016313	39	1	MARQUEZ	\N	\N
+195	JUVENAL		AH	01080174580200211283	1	1	4585196	V	AA	41 1016267	39	1	FREITAS	\N	\N
+274	YLIANA		AH	01140175951751052126	6	1	13292906	V	AA	41 1016381	47	1	MONTILLA	\N	\N
+275	YOKSA		AH	01050122940122077075	12	1	12783045	V	AA	41 1016376	47	1	LEON	\N	\N
+277	Carmen		AH	01510015014001986819	13	1	14368511	V	AA	40 537202	47	1	Bustamante	\N	\N
+278	Carmen	4268212137	AH	01510015014001986819	13	1	14368511	V	AA	41 1016380	47	1	Bustamante	\N	\N
+279	QUEILA		CO	01340056300561047205	14	1	18380426	V	AA	41 1016366	47	1	DAZA	\N	\N
+280	FRANKLIN	4122516337	CO	01340345723451037772	14	1	7956425	V	AA	41 1016379	47	1	ROJAS	\N	\N
+281	PEDRO	4129891578	CO	01340008360083306942	14	1	15366525	V	AA	41 1016388	47	1	CHACON	\N	\N
+283	Ileana		AH	01750044910060484206	30	1	9488963	V	AA	40 537181	47	1	Torres	\N	\N
+284	Ingrid	4125508117	CO	01750504130071185878	30	1	6266645	V	AA	41 1016305	47	1	Abello	\N	\N
+285	Jessica	4123838588	CO	01750292160076654263	30	1	15612562	V	AA	41 1016318	47	1	Rojas	\N	\N
+286	Mariana	4267134323	CO	01750619680073550296	30	1	9955542	V	AA	41 1016360	47	1	Vera	\N	\N
+287	Giovanna	4162007045	AH	01080025000200040577	1	1	6242198	V	AA	41 1016391	48	1	Gagliardi	\N	\N
+288	Yeiny	4129360636	AH	01020243490100014599	3	1	14471710	V	AA	41 1016394	48	1	Diaz	\N	\N
+289	Edward		CO	01050661151661022995	12	1	4432778	V	AA	41 1016393	48	1	Correa	\N	\N
+290	Yusmari	4143379251	CO	01750566110071937694	30	1	18745556	V	AA	41 1016400	50	1	Ochoa	\N	\N
+276	Elena		AH	01050603407603023742	12	1	6551284	V	AA	40 537182	47	1	Galicia	\N	1
+243	Michelina Diglio		CO	01910056152156031119	23	1	13472947	V	AA	40 537175	46	1	Diglio	\N	\N
+282	Rosana Teheran		AH	01910001481101024898	23	1	22040837	V	AA	40 537185	47	1	Teheran	\N	\N
+43	GABRIEL		AH	01050091510091277965	12	1	5580945	V	AA	40 537160	39	1	TORRES	\N	1
+292	GLADYS		AH	01140169481691532565	6	1	6071853	V	AA	41 1016404	51	1	MARIN	\N	\N
+293	Dulce	4266102859	AH	01050078890078280176	12	1	12664744	V	AA	41 1016403	51	1	Herrera	\N	\N
+294	BENERICE		AH	01020106350100047291	3	1	10195454	V	AA	40 537207	51	1	ALEGRIA	\N	\N
+295	Jesus		CO	01140154641549006775	6	1	11689341	V	AA	40 537206	51	1	Finol	\N	\N
+299	Jorge		AH	01340382113821016036	14	1	6390975	V	AA	40 537179	54	1	Jaimes	\N	\N
+300	Maida		CO	01080018890100320108	1	1	81754855	E	AA	40 537210	54	1	Blanco	\N	\N
+301	Idara Portillo	4241076524	AH	01910064221164037058	23	1	9418812	V	AA	41 1016422	54	1	Portillo	\N	\N
+302	CARLOS		CO	01050277241277043698	12	1	13583024	V	AA	41 1016435	55	1	MACHADO	\N	\N
+303	Juana	4149180649	AH	01080017030200026228	1	1	6091015	V	AA	41 1016426	55	1	Bastidas	\N	\N
+304	YUSVELI	4167137974	CO	01340386443863018295	14	1	11411170	V	AA	41 1016427	55	1	CASTRO	\N	\N
+305	Fiorella	4247292871	CO	01080282260100233198	1	1	17677440	V	AA	41 1016230	57	1	Gomez	\N	\N
+306	Diana	4141527929	AH	01050034697034051712	12	1	24461660	V	AA	41 1016365	57	1	Teheran	\N	\N
+307	Lilibeth	4127201536	AH	01020455140103121182	3	1	20489238	V	AA	41 1016417	57	1	Vargas	\N	\N
+308	JULIO		AH	01340040710402025158	14	1	14890084	V	AA	40 537208	57	1	SANTANA	\N	\N
+309	Arturo	4129150691	CO	01340374163743018907	14	1	6523639	V	AA	41 1016412	57	1	Olivier	\N	\N
+310	YOKSA		AH	01050122940122077075	12	1	12783045	V	AA	41 1016413	57	1	LEON	\N	\N
+311	SARA		AH	01080101070200290312	1	1	11939913	V	AA	41 1016359	57	1	ARRIETA	\N	\N
+312	Diana		AH	01050034697034051712	12	1	24461660	V	AA	40 537184	57	1	Teheran	\N	\N
+313	ADILIZ	4126043327	CO	01020229930000249382	3	1	13536869	V	AA	41 1016576	57	1	DURAN	\N	\N
+314	Carlos		CO	01080177070100090205	1	1	6859066	V	AA	41 1016579	57	1	Dapena	\N	\N
+315	Reinaldo		CO	01020213230000140203	3	1	6315531	V	AA	41 1016593	57	1	Chacon	\N	\N
+316	EDUARDO	4143694982	CO	01910055342155032835	23	1	10516498	V	AA	41 1016307	57	1	ABELLO	\N	\N
+317	EDUARDO		CO	01910055342155032835	23	1	10516498	V	AA	40 537174	57	1	ABELLO	\N	\N
+318	JOSE	4125812233	AH	01080112570200163574	1	1	12641668	V	AA	41 1016398	57	1	PEREZ	\N	\N
+319	NORIS		AH	01020254060100002722	3	1	5475891	V	AA	41 1016423	57	1	GONZALEZ	\N	\N
+320	YENY		CO	01080028590100140503	1	1	14834783	V	AA	40 537222	57	1	TERAN	\N	\N
+321	LUZ	4242421759	CO	01080112530100125543	1	1	17756680	V	AA	41 1016445	57	1	MARTIN	\N	\N
+322	LUZ		AH	01340720737202020660	14	1	16292182	V	AA	40 537225	57	1	LAZALA	\N	\N
+323	Mayela		AH	01080229000200049409	1	1	4448228	V	AA	41 1016455	57	1	Boggiano	\N	\N
+324	Nixon		CO	01340945589461692131	14	1	11900124	V	AA	40 537231	57	1	Zorrilla	\N	\N
+325	Doris	4166335697	CO	01340198511981032076	14	1	13535407	V	AA	41 1016575	57	1	Aguilar	\N	\N
+326	Rosa	4149052116	CO	01750490890073090730	30	1	8462894	V	AA	41 1016577	57	1	Urbaez	\N	\N
+327	Lisbeth	4262119388	CO	01020501860000338688	3	1	11165764	V	AA	41 1016587	57	1	Soto	\N	\N
+328	MERBIS	4143693646	AH	01340128411285038169	14	1	11941215	V	AA	41 1016602	57	1	GEDLER	\N	\N
+329	Oskar		AH	01340102171025035816	14	1	12668184	V	AA	40 537235	57	1	Diaz	\N	\N
+330	Yasmin	4125550885	AH	01080055200200565584	1	1	6645247	V	AA	41 1016595	57	1	Moreno	\N	\N
+331	Maria		CO	01080129040100035210	1	1	14048987	V	AA	40 537212	57	1	Tellez	\N	\N
+332	Katty	4141319334	CO	01750490870073090616	30	1	7925939	V	AA	41 1016410	57	1	Morales	\N	\N
+333	SANDRA		CO	01020387210000024468	3	1	12187501	V	AA	40 537209	57	1	GARCIA	\N	\N
+334	DANIEL	4242007573	CO	01020105520000232409	3	1	12837426	V	AA	41 1016421	57	1	ACUÑA	\N	\N
+335	YORBI	4143164617	CO	01080129050100112665	1	1	19830276	V	AA	41 1016418	57	1	SOTO	\N	\N
+336	LUZ	4143078520	AH	01340720737202020660	14	1	16292182	V	AA	41 1016446	57	1	LAZALA	\N	\N
+337	YENY	4241334966	CO	01080028590100140503	1	1	14834783	V	AA	41 1016442	57	1	TERAN	\N	\N
+338	Piñero		CO	01020213260000141325	3	1	14955637	V	AA	41 1016425	57	1	Marbella	\N	\N
+339	EDDY		CO	01080034030100227830	1	1	11739361	V	AA	40 537233	57	1	PINEDA	\N	\N
+340	Vianet	4120900099	CO	01340389903891377133	14	1	6887242	V	AA	41 1016592	57	1	Pages Suarez	\N	\N
+341	Bellatriz	4164169323	AH	01020102120100070033	3	1	6253059	V	AA	41 1016304	57	1	Montilla	\N	\N
+342	Maria	4123604048	CO	01020245160000231879	3	1	9064332	V	AA	41 1016456	57	1	Romero	\N	\N
+343	Oskar		AH	01340102171025035816	14	1	12668184	V	AA	40 537236	57	1	Diaz	\N	\N
+344	Aracelis		CO	01020141100000131801	3	1	8256287	V	AA	40 537211	57	1	Hernandez	\N	\N
+345	MERBIS		AH	01340128411285038169	14	1	11941215	V	AA	40 537234	57	1	GEDLER	\N	\N
+\.
+
+
+--
+-- Data for Name: cobros; Type: TABLE DATA; Schema: cobranza; Owner: postgres
+--
+
+COPY cobranza.cobros (id_cobro, mt_cobro, st_cobro, fe_registro, id_cliente, tx_error, fe_recepcion, nu_lote, mt_cobros_str, nu_consecutivo, tx_referencia) FROM stdin;
+265	2740616.9199999999	7	2021-05-25	243	\N	\N	3006	274061692	45	28161494
+254	25906125.440000001	4	2021-05-18	253	Exitoso	\N	3034	2590612544	44	28228591
+255	9450602.8699999992	3	2021-05-18	254	Saldo Negativo	\N	3034	945060287	44	28160637
+242	4807510.7000000002	3	2021-05-13	248	Rechazado	\N	3007	480751070	41	28227935
+222	3302763.75	4	2021-05-03	237	Autorizado	\N	3001	330276375	39	28107019
+225	3443907.5	4	2021-05-03	239	Autorizado	\N	3001	344390750	39	28107051
+226	7339475	4	2021-05-03	240	Autorizado	\N	3001	733947500	39	28107007
+221	12222317.529999999	3	2021-05-03	200	Fondos Insuficientes	\N	3003	1222231753	39	28160189
+230	116528280	4	2021-05-03	244	Autorizado	\N	3001	11652828000	39	28161513
+243	4807510.7000000002	4	2021-05-13	249	Procesado	\N	3007	480751070	41	28227992
+231	32688892.5	4	2021-05-03	195	Autorizado	\N	3001	3268889250	39	28159809
+223	58100407.75	3	2021-05-03	238	Rechazado	\N	3006	5810040775	39	28161205
+246	9275667.6999999993	4	2021-05-13	250	Procesado	\N	3007	927566770	41	28227976
+224	168243350	3	2021-05-03	194	Rechazado	\N	3001	16824335000	39	28160928
+240	12358130.439999999	3	2021-05-13	200	Cuota Vencida	\N	3005	1235813044	41	28160189
+228	19130583.960000001	3	2021-05-03	242	Rechazado	\N	3011	1913058396	39	28161126
+229	2517182.1000000001	3	2021-05-03	243	Rechazado	\N	3004	251718210	39	28161494
+172	146693003.19999999	3	2021-04-30	194	Fondos Insuficientes	\N	3000	14669300320	34	28160928
+178	10755846.039999999	3	2021-04-30	200	Fondos Insuficientes	\N	3000	1075584604	34	28160189
+173	28501761.359999999	3	2021-04-30	195	Fondos Insuficientes	\N	3000	2850176136	34	28159809
+174	123679923	4	2021-04-30	196	Procesado	\N	3002	12367992300	34	28106611
+175	9229845	4	2021-04-30	197	Exitoso	\N	3002	922984500	34	28160201
+176	1895194.8400000001	4	2021-04-30	198	Autorizado	\N	3002	189519484	34	28161031
+177	4430325.5999999996	4	2021-04-30	199	Autorizado	\N	3002	443032560	34	28159286
+253	11322607.27	3	2021-05-18	197	Exitoso	\N	3036	1132260727	44	28160224
+247	2545152.7200000002	3	2021-05-13	243	Error de estructura	\N	3005	254515272	41	28161494
+245	19343160.690000001	4	2021-05-13	242	Procesado	\N	3012	1934316069	41	28161126
+244	5434851.4900000002	4	2021-05-13	199	Exitoso	\N	3013	543485149	41	28159298
+312	15053008.01	3	2021-06-03	261	Rechazado	\N	3015	1505300801	48	28230228
+272	23550862.18	3	2021-06-02	257	Rechazado	\N	\N	2355086218	47	28231050
+276	10217834.380000001	7	2021-06-02	260	\N	\N	3014	1021783438	47	28161286
+277	15139839.970000001	7	2021-06-02	261	\N	\N	3014	1513983997	47	28230228
+278	2523306.6600000001	7	2021-06-02	262	\N	\N	3014	252330666	47	28230536
+279	13551091.33	7	2021-06-02	263	\N	\N	3014	1355109133	47	28231124
+280	10217834.380000001	7	2021-06-02	264	\N	\N	3014	1021783438	47	28230631
+241	57322495.219999999	3	2021-05-13	238	Rechazado	\N	3007	5732249522	41	28161205
+281	2865977.9399999999	7	2021-06-02	265	\N	\N	3014	286597794	47	28230731
+282	61275854.369999997	7	2021-06-02	266	\N	\N	3014	6127585437	47	28229703
+274	24983851.149999999	7	2021-06-02	256	\N	\N	3014	2498385115	47	28229476
+275	6136931.0199999996	7	2021-06-02	259	\N	\N	3014	613693102	47	28230407
+258	181489742.63999999	8	2021-05-25	194	\N	\N	\N	18148974264	45	28160928
+266	9531256.6199999992	3	2021-05-25	254	Saldo negativo	\N	3037	953125662	45	28160637
+305	10217834.380000001	7	2021-06-02	284	\N	\N	\N	1021783438	47	28161340
+306	10217834.380000001	7	2021-06-02	285	\N	\N	\N	1021783438	47	28161651
+261	5176720.8499999996	7	2021-05-25	248	\N	\N	3008	517672085	45	28227935
+262	7704178.6699999999	7	2021-05-25	255	\N	\N	3008	770417867	45	28229022
+256	13307217.710000001	7	2021-05-25	200	\N	\N	3006	1330721771	45	28160189
+260	2344750.0299999998	4	2021-05-25	198	Autorizado	\N	3014	234475003	45	28161032
+264	20828688.579999998	3	2021-05-25	242	Rechazado	\N	3014	2082868858	45	28161127
+268	5194435	4	2021-05-26	248	Procesado	\N	3010	519443500	46	28227935
+269	7730541.5	4	2021-05-26	255	Procesado	\N	3010	773054150	46	28229022
+267	24505511	3	2021-05-26	256	Rechazado	\N	3010	2450551100	46	28229476
+257	3562801.9900000002	4	2021-05-25	237	Autorizado	\N	3002	356280199	45	28107020
+263	7917337.7699999996	4	2021-05-25	240	Autorizado	\N	3002	791733777	45	28107008
+259	3715058.4900000002	4	2021-05-25	239	Autorizado	\N	3002	371505849	45	28107052
+271	2749995	3	2021-05-26	243	Error de estructura	\N	3007	274999500	46	28161494
+270	13352753.5	3	2021-05-26	200	Rechazado	\N	3007	1335275350	46	28160189
+307	7881439.3300000001	7	2021-06-02	286	\N	\N	\N	788143933	47	28229913
+314	13473371.359999999	3	2021-06-03	263	Rechazado	\N	3015	1347337136	48	28231124
+326	10530910.949999999	3	2021-06-03	275	Rechazado	\N	3046	1053091095	48	28230695
+328	4615016.8600000003	3	2021-06-03	289	Rechazado	\N	3046	461501686	48	28232094
+330	9694632.7300000004	3	2021-06-03	254	Rechazado	\N	3046	969463273	48	28160637
+308	25398079.350000001	3	2021-06-03	287	Rechazado	\N	3004	2539807935	48	28232067
+336	7836236.6799999997	4	2021-06-03	286	Exitoso	\N	3004	783623668	48	28229913
+334	10159231.74	4	2021-06-03	284	Exitoso	\N	3004	1015923174	48	28161340
+273	83549487.260000005	4	2021-06-02	258	Exitoso	\N	\N	8354948726	47	28230073
+332	11986654.52	4	2021-06-03	278	Exitoso	\N	3003	1198665452	48	28230990
+227	5957330.9699999997	4	2021-05-03	43	Procesado	\N	3016	595733097	39	28106949
+339	10587320.35	7	2021-06-07	275	\N	\N	3048	1058732035	49	28230695
+345	6632644.8099999996	7	2021-06-07	43	\N	\N	3048	663264481	49	28106950
+300	22304784.82	4	2021-06-02	281	Exitoso	\N	3017	2230478482	47	28231411
+301	13613395.199999999	4	2021-06-02	200	Exitoso	\N	3011	1361339520	47	28160189
+346	61250762.140000001	7	2021-06-07	266	\N	\N	3016	6125076214	49	28229703
+347	13701238.1	7	2021-06-07	267	\N	\N	3016	1370123810	49	28230052
+311	10159231.74	3	2021-06-03	260	Rechazado	\N	3015	1015923174	48	28161286
+349	21890841.780000001	7	2021-06-07	269	\N	\N	3016	2189084178	49	28231142
+350	9746562.5600000005	7	2021-06-07	254	\N	\N	3048	974656256	49	28160637
+309	24840560.539999999	3	2021-06-03	256	Rechazado	\N	3015	2484056054	48	28229476
+310	6101733.7000000002	3	2021-06-03	259	Rechazado	\N	3015	610173370	48	28230407
+298	21307922.920000002	3	2021-06-02	242	Rechazado	\N	3017	2130792292	47	28161127
+297	11463911.75	3	2021-06-02	279	Rechazado	\N	3017	1146391175	47	28230210
+317	60924417.170000002	3	2021-06-03	266	Rechazado	\N	3015	6092441717	48	28229703
+318	13628237.699999999	3	2021-06-03	267	Rechazado	\N	3015	1362823770	48	28230052
+321	21774207.050000001	3	2021-06-03	269	Rechazado	\N	3015	2177420705	48	28231142
+322	9230033.7200000007	3	2021-06-03	270	Rechazado	\N	3015	923003372	48	28230383
+323	7836236.6799999997	3	2021-06-03	271	Rechazado	\N	3015	783623668	48	28230395
+324	2075208.9199999999	3	2021-06-03	272	Rechazado	\N	3015	207520892	48	28230707
+325	16229992.17	3	2021-06-03	273	Rechazado	\N	3015	1622999217	48	28231433
+319	20845009.030000001	3	2021-06-03	288	Rechazado	\N	3015	2084500903	48	28232106
+327	6256600.04	3	2021-06-03	276	Rechazado	\N	3046	625660004	48	28229953
+283	13706851	7	2021-06-02	267	\N	\N	3014	1370685100	47	28230052
+284	11900038.83	7	2021-06-02	268	\N	\N	3014	1190003883	47	28230887
+285	21899809.670000002	7	2021-06-02	269	\N	\N	3014	2189980967	47	28231142
+286	9283276.3599999994	7	2021-06-02	270	\N	\N	3014	928327636	47	28230383
+287	7881439.3300000001	7	2021-06-02	271	\N	\N	3014	788143933	47	28230395
+288	2087179.5800000001	7	2021-06-02	272	\N	\N	3014	208717958	47	28230707
+289	16323613.470000001	7	2021-06-02	273	\N	\N	3014	1632361347	47	28231433
+313	2508834.6699999999	4	2021-06-03	262	Exitoso	\N	3015	250883467	48	28230536
+315	10159231.74	4	2021-06-03	264	Exitoso	\N	3015	1015923174	48	28230631
+316	2849540.6099999999	4	2021-06-03	265	Exitoso	\N	3015	284954061	48	28230731
+320	11831788.189999999	4	2021-06-03	268	Exitoso	\N	3015	1183178819	48	28230887
+331	1858396.05	4	2021-06-03	277	Exitoso	\N	3003	185839605	48	28231007
+333	3035380.2200000002	4	2021-06-03	283	Exitoso	\N	3004	303538022	48	28229861
+335	10159231.74	4	2021-06-03	285	Exitoso	\N	3004	1015923174	48	28161651
+299	10716265.33	4	2021-06-02	280	Exitoso	\N	3017	1071626533	47	28230978
+293	6635361.96	7	2021-06-02	43	\N	\N	3044	663536196	47	28106950
+302	6136931.0199999996	3	2021-06-02	282	Rechazado	\N	\N	613693102	47	28230359
+290	14547953.220000001	3	2021-06-02	274	Rechazado	\N	\N	1454795322	47	28231022
+303	2803674.0699999998	3	2021-06-02	243	Rechazado	\N	\N	280367407	47	28161494
+291	10591657.59	7	2021-06-02	275	\N	\N	3044	1059165759	47	28230695
+292	6292690.6900000004	7	2021-06-02	276	\N	\N	3044	629269069	47	28229953
+294	9750555.3699999992	7	2021-06-02	254	\N	\N	3044	975055537	47	28160637
+295	1869116.05	7	2021-06-02	277	\N	\N	3002	186911605	47	28231007
+296	12055798.5	7	2021-06-02	278	\N	\N	3002	1205579850	47	28230990
+304	3052889.54	7	2021-06-02	283	\N	\N	\N	305288954	47	28229861
+351	9279474.9000000004	7	2021-06-07	270	\N	\N	3016	927947490	49	28230383
+352	7878211.9100000001	7	2021-06-07	271	\N	\N	3016	787821191	49	28230395
+353	2086324.8899999999	7	2021-06-07	272	\N	\N	3016	208632489	49	28230707
+354	16316929.01	7	2021-06-07	273	\N	\N	3016	1631692901	49	28231433
+348	20956666.460000001	7	2021-06-07	288	\N	\N	3016	2095666646	49	28232106
+355	15040222.73	7	2021-06-07	287	\N	\N	3005	1504022273	49	28348668
+340	10213650.220000001	7	2021-06-07	260	\N	\N	3016	1021365022	49	28161286
+342	15133640.27	7	2021-06-07	261	\N	\N	3016	1513364027	49	28230228
+343	13545542.210000001	7	2021-06-07	263	\N	\N	3016	1354554221	49	28231124
+337	24973620.359999999	7	2021-06-07	256	\N	\N	3016	2497362036	49	28229476
+338	6134417.9699999997	7	2021-06-07	259	\N	\N	3016	613441797	49	28230407
+341	6290113.8600000003	7	2021-06-07	276	\N	\N	3048	629011386	49	28229953
+344	4639737.4500000002	7	2021-06-07	289	\N	\N	3048	463973745	49	28232094
+364	11448631.060000001	3	2021-06-08	279	Rechazado	\N	3018	1144863106	50	28230210
+361	21870618.579999998	3	2021-06-08	290	Rechazado	\N	3005	2187061858	50	28463870
+362	10204214.640000001	3	2021-06-08	260	Rechazado	\N	3017	1020421464	50	28161286
+365	15119659.5	3	2021-06-08	261	Rechazado	\N	3017	1511965950	50	28230228
+369	13533028.57	3	2021-06-08	263	Rechazado	\N	3017	1353302857	50	28231124
+356	13595249.390000001	3	2021-06-08	200	Rechazado	\N	3012	1359524939	50	28160190
+367	14528561.699999999	3	2021-06-08	274	Rechazado	\N	3005	1452856170	50	28231022
+370	4635451.1600000001	4	2021-06-08	289	Exitoso	\N	3050	463545116	50	28232094
+363	6284302.9199999999	7	2021-06-08	276	\N	\N	3049	628430292	50	28229953
+368	23519470.34	4	2021-06-08	257	Exitoso	\N	3006	2351947034	50	28231050
+360	10577539.57	4	2021-06-08	275	Exitoso	\N	3050	1057753957	50	28230695
+357	185418046.58000001	3	2021-06-08	194	Rechazado	\N	3007	18541804658	50	28160928
+371	6626517.4400000004	3	2021-06-08	242	Rechazado	\N	3050	662651744	50	28106950
+329	6597305.9800000004	3	2021-06-03	43	Rechazado	\N	3046	659730598	48	28106950
+386	186765056.63999999	8	2021-06-11	194	\N	\N	\N	18676505664	51	28160928
+384	15026328.27	9	2021-06-08	287	\N	\N	\N	1502632827	50	28348668
+400	10278345.4	4	2021-06-11	250	Exitoso	\N	3018	1027834540	51	28227977
+388	5327191.21	4	2021-06-11	248	Exitoso	\N	3018	532719121	51	28227936
+405	3572351.75	4	2021-06-11	294	Exitoso	\N	3018	357235175	51	28464131
+393	6173274.5199999996	4	2021-06-11	282	Exitoso	\N	3013	617327452	51	28230359
+375	13688580.619999999	4	2021-06-08	267	Exitoso	\N	3017	1368858062	50	28230052
+380	9270902.3300000001	4	2021-06-08	270	Exitoso	\N	3017	927090233	50	28230383
+381	7870933.8600000003	4	2021-06-08	271	Exitoso	\N	3017	787093386	50	28230395
+382	2084397.5	4	2021-06-08	272	Exitoso	\N	3017	208439750	50	28230707
+383	16301855.1	4	2021-06-08	273	Exitoso	\N	3017	1630185510	50	28231433
+376	20937306.27	4	2021-06-08	288	Exitoso	\N	3017	2093730627	50	28232106
+379	9737558.4900000002	4	2021-06-08	254	Exitoso	\N	3050	973755849	50	28160637
+359	6128750.8700000001	4	2021-06-08	259	Exitoso	\N	3017	612875087	50	28230407
+378	21870618.579999998	4	2021-06-08	269	Exitoso	\N	3017	2187061858	50	28231142
+372	5599873.8899999997	3	2021-06-08	199	Rechazado	\N	3018	559987389	50	28159299
+373	21279520.780000001	3	2021-06-08	242	Rechazado	\N	3018	2127952078	50	28161127
+358	24950549.219999999	3	2021-06-08	256	Rechazado	\N	3017	2495054922	50	28229476
+374	61194177.450000003	3	2021-06-08	266	Rechazado	\N	3017	6119417745	50	28229703
+377	2799936.9500000002	3	2021-06-08	243	Rechazado	\N	3012	279993695	50	28161494
+366	6128750.8700000001	3	2021-06-08	282	Rechazado	\N	3012	612875087	50	28230359
+398	5640555.4000000004	4	2021-06-11	199	Exitoso	\N	3019	564055540	51	28159299
+394	14634107.630000001	4	2021-06-11	274	Exitoso	\N	3006	1463410763	51	28231022
+407	5076499.8600000003	4	2021-06-11	295	Exitoso	\N	3006	507649986	51	28463942
+389	5327191.21	4	2021-06-11	249	Exitoso	\N	3018	532719121	51	28227993
+397	6674657.2300000004	4	2021-06-11	43	Exitoso	\N	3052	667465723	51	28106950
+396	29957616.469999999	4	2021-06-11	291	Exitoso	\N	3008	2995761647	51	28464686
+391	11531802.16	3	2021-06-11	279	Rechazado	\N	3019	1153180216	51	28230210
+399	21434110.530000001	3	2021-06-11	242	Rechazado	\N	3019	2143411053	51	28161127
+401	25539181.399999999	3	2021-06-11	292	Rechazado	\N	3006	2553918140	51	28464024
+392	15229499.59	3	2021-06-11	261	Rechazado	\N	3018	1522949959	51	28230228
+395	13631342.220000001	3	2021-06-11	263	Rechazado	\N	3018	1363134222	51	28231124
+387	25131807.960000001	3	2021-06-11	256	Rechazado	\N	3018	2513180796	51	28229476
+402	61638735.979999997	3	2021-06-11	266	Rechazado	\N	3018	6163873598	51	28229703
+404	2820277.7000000002	3	2021-06-11	243	Rechazado	\N	3013	282027770	51	28161494
+385	13694015.060000001	3	2021-06-11	200	Rechazado	\N	3013	1369401506	51	28160190
+390	6329956.6200000001	3	2021-06-11	276	Rechazado	\N	3052	632995662	51	28229953
+403	13944706.41	3	2021-06-11	293	Rechazado	\N	3052	1394470641	51	28463982
+406	15135490.33	3	2021-06-11	287	Rechazado	\N	3008	1513549033	51	28348668
+408	22029502.489999998	3	2021-06-11	290	Rechazado	\N	3006	2202950249	52	28463870
+424	21293211.25	4	2021-06-16	242	Exitoso	\N	3020	2129321125	54	28161127
+429	2801738.3199999998	4	2021-06-16	243	Exitoso	\N	3015	280173832	54	28161494
+415	13603996.07	4	2021-06-16	200	Exitoso	\N	3015	1360399607	54	28160190
+421	11455996.689999999	3	2021-06-16	279	Rechazado	\N	3020	1145599669	54	28230210
+419	16966082.059999999	3	2021-06-16	299	Rechazado	\N	3020	1696608206	54	28228078
+418	21884689.34	3	2021-06-16	290	Rechazado	\N	3007	2188468934	54	28463870
+426	25371297.030000001	3	2021-06-16	292	Rechazado	\N	3007	2537129703	54	28464024
+422	15129386.939999999	3	2021-06-16	261	Rechazado	\N	3019	1512938694	54	28230228
+417	24966601.489999998	3	2021-06-16	256	Rechazado	\N	3019	2496660149	54	28229476
+427	61233547.549999997	3	2021-06-16	266	Rechazado	\N	3019	6123354755	54	28229703
+423	13541735.220000001	4	2021-06-16	263	Exitoso	\N	3019	1354173522	54	28231124
+431	11580518.4	4	2021-06-16	300	Exitoso	\N	3009	1158051840	54	28465087
+433	15035995.66	3	2021-06-16	287	Rechazado	\N	3009	1503599566	54	28348668
+425	26709905.34	3	2021-06-16	253	Rechazado	\N	3055	2670990534	54	28228592
+428	13853039.48	3	2021-06-16	293	Rechazado	\N	3055	1385303948	54	28463982
+432	17526429.73	3	2021-06-16	301	Rechazado	\N	3015	1752642973	54	28466255
+430	9743823.2799999993	3	2021-06-16	254	Rechazado	\N	3055	974382328	54	28160638
+416	11673909.68	3	2021-06-16	197	Rechazado	\N	3055	1167390968	54	28160225
+420	6288346.0099999998	3	2021-06-16	254	Rechazado	\N	3054	628834601	54	28229953
+440	17105363.510000002	3	2021-06-21	299	Rechazado	\N	3021	1710536351	55	28228078
+443	11550043.619999999	3	2021-06-21	279	Rechazado	\N	3021	1155004362	55	28230210
+447	25391264.370000001	3	2021-06-21	304	Rechazado	\N	3021	2539126437	55	28466571
+448	25579580.300000001	3	2021-06-21	292	Rechazado	\N	3008	2557958030	55	28464024
+451	2824738.9300000002	3	2021-06-21	243	Rechazado	\N	3016	282473893	55	28161495
+453	17670311.300000001	3	2021-06-21	301	Rechazado	\N	3016	1767031130	55	28466255
+434	13715676.800000001	3	2021-06-21	200	Rechazado	\N	3016	1371567680	55	28160191
+442	6339969.5999999996	3	2021-06-21	276	Rechazado	\N	\N	633996960	55	28229953
+435	11769745.539999999	3	2021-06-21	197	Rechazado	\N	3059	1176974554	55	28160225
+446	26929177.789999999	3	2021-06-21	253	Rechazado	\N	3059	2692917779	55	28228592
+452	9823814.2799999993	3	2021-06-21	254	Rechazado	\N	3059	982381428	55	28160638
+444	15253590.220000001	3	2021-06-21	261	Rechazado	\N	3020	1525359022	55	28230228
+436	25171562.460000001	3	2021-06-21	256	Rechazado	\N	3020	2517156246	55	28229476
+437	22064349.629999999	3	2021-06-21	290	Rechazado	\N	3008	2206434963	55	28463870
+456	22125498.82	2	2021-06-22	290	\N	\N	3009	2212549882	56	28463870
+458	15295864.050000001	2	2021-06-22	261	\N	\N	3021	1529586405	56	28230228
+455	25241322.98	2	2021-06-22	256	\N	\N	3021	2524132298	56	28229476
+457	7962661.7400000002	2	2021-06-22	255	\N	\N	3021	796266174	56	28229023
+460	61907334.549999997	2	2021-06-22	266	\N	\N	3021	6190733455	56	28229703
+450	13966764.699999999	4	2021-06-21	293	Exitoso	\N	3059	1396676470	55	28463982
+441	7940654.9900000002	4	2021-06-21	255	Exitoso	\N	3020	794065499	55	28229023
+439	2416721.0800000001	4	2021-06-21	198	Exitoso	\N	3021	241672108	55	28161033
+454	15159432.25	4	2021-06-21	287	Exitoso	\N	3010	1515943225	55	28348668
+445	22723455.379999999	4	2021-06-21	303	Exitoso	\N	3010	2272345538	55	28466552
+438	23665035.030000001	4	2021-06-21	302	Exitoso	\N	3059	2366503503	55	28466981
+449	61736238.590000004	4	2021-06-21	266	Exitoso	\N	3020	6173623859	55	28229703
+459	21527512.370000001	3	2021-06-22	242	Rechazado	\N	3022	2152751237	56	28161128
+500	6557568.2199999997	2	2021-07-02	326	\N	\N	3010	655756822	57	28469759
+469	3181394.48	2	2021-07-02	283	\N	\N	3010	318139448	57	28229862
+506	10647932.550000001	2	2021-07-02	284	\N	\N	3010	1064793255	57	28161341
+507	10647932.550000001	2	2021-07-02	285	\N	\N	3010	1064793255	57	28161652
+512	8213191.8799999999	2	2021-07-02	286	\N	\N	3010	821319188	57	28229914
+488	15160318.6	2	2021-07-02	274	\N	\N	3009	1516031860	57	28231023
+474	6395252.1699999999	2	2021-07-02	259	\N	\N	3022	639525217	57	28230408
+476	22821635.93	2	2021-07-02	313	\N	\N	3022	2282163593	57	28469663
+478	51584039.100000001	2	2021-07-02	315	\N	\N	3022	5158403910	57	28470060
+479	10647932.550000001	2	2021-07-02	260	\N	\N	3022	1064793255	57	28161287
+486	2629519.9300000002	2	2021-07-02	262	\N	\N	3022	262951993	57	28230537
+490	14121495.92	2	2021-07-02	263	\N	\N	3022	1412149592	57	28231125
+493	22042518.91	2	2021-07-02	319	\N	\N	3022	2204251891	57	28466455
+502	0	2	2021-07-02	327	\N	\N	3022	000	57	28469919
+487	1947792.54	2	2021-07-02	277	\N	\N	3004	194779254	57	28231008
+464	21717886.82	3	2021-07-02	306	Rechazado	2021-07-08	3061	2171788682	57	28230125
+467	12173703.380000001	3	2021-07-02	197	Rechazado	2021-07-08	3061	1217370338	57	28160225
+471	7434074.8600000003	3	2021-07-02	310	Rechazado	2021-07-08	3061	743407486	57	28464556
+473	8927382.4800000004	3	2021-07-02	312	Rechazado	2021-07-08	3061	892738248	57	28230152
+508	27853433.32	3	2021-07-02	253	Rechazado	2021-07-08	3061	2785343332	57	28228592
+480	14511054.42	2	2021-07-02	316	\N	\N	3017	1451105442	57	28161389
+481	8927382.4800000004	2	2021-07-02	317	\N	\N	3017	892738248	57	28161401
+485	6395252.1699999999	2	2021-07-02	282	\N	\N	3017	639525217	57	28230360
+475	11037491.060000001	3	2021-07-02	275	Rechazado	2021-07-08	3061	1103749106	57	28230696
+477	13439768.529999999	2	2021-07-02	314	\N	\N	3011	1343976853	57	28469809
+489	24542186	2	2021-07-02	257	\N	\N	3011	2454218600	57	28231051
+492	69601120.099999994	2	2021-07-02	318	\N	\N	3011	6960112010	57	28463773
+494	5194113.4400000004	2	2021-07-02	320	\N	\N	3011	519411344	57	28467266
+495	27593727.649999999	2	2021-07-02	321	\N	\N	3011	2759372765	57	28467391
+497	29996005.120000001	2	2021-07-02	323	\N	\N	3011	2999600512	57	28467945
+501	8440434.3399999999	2	2021-07-02	240	\N	\N	3011	844043434	57	28107009
+462	31554239.149999999	2	2021-07-02	305	\N	\N	3011	3155423915	57	28107067
+483	6557568.2199999997	3	2021-07-02	276	Rechazado	2021-07-08	3061	655756822	57	28229953
+491	4837018.1399999997	3	2021-07-02	289	Rechazado	2021-07-08	3061	483701814	57	28232095
+504	6914663.5199999996	3	2021-07-02	43	Rechazado	2021-07-08	3061	691466352	57	28106951
+461	14186422.33	3	2021-07-02	200	Rechazado	2021-07-08	3017	1418642233	57	28160191
+482	17692448.91	2	2021-07-02	299	\N	\N	3023	1769244891	57	28228078
+484	11946460.91	2	2021-07-02	279	\N	\N	3023	1194646091	57	28230210
+496	4707165.3099999996	2	2021-07-02	322	\N	\N	3023	470716531	57	28467420
+498	3473563.3599999999	2	2021-07-02	324	\N	\N	3023	347356336	57	28468135
+499	49636246.560000002	2	2021-07-02	325	\N	\N	3023	4963624656	57	28469651
+503	47591064.390000001	2	2021-07-02	328	\N	\N	3023	4759106439	57	28540476
+466	3311247.3199999998	2	2021-07-02	308	\N	\N	3023	331124732	57	28465005
+470	14446128.01	2	2021-07-02	309	\N	\N	3023	1444612801	57	28464544
+505	22204834.960000001	2	2021-07-02	242	\N	\N	3023	2220483496	57	28161128
+509	26262736.079999998	2	2021-07-02	304	\N	\N	3023	2626273608	57	28466571
+510	6979589.9400000004	2	2021-07-02	329	\N	\N	3023	697958994	57	28469960
+515	11167343.9	2	2021-07-02	280	\N	\N	3023	1116734390	57	28230979
+526	19348072.559999999	2	2021-07-02	336	\N	\N	3023	1934807256	57	28467403
+532	9706499.4900000002	2	2021-07-02	340	\N	\N	3023	970649949	57	28470038
+537	23243657.640000001	2	2021-07-02	281	\N	\N	3023	2324365764	57	28231412
+540	6557568.2199999997	2	2021-07-02	343	\N	\N	3023	655756822	57	28469973
+543	6979589.9400000004	2	2021-07-02	345	\N	\N	3023	697958994	57	28469726
+518	8213191.8799999999	2	2021-07-02	332	\N	\N	3010	821319188	57	28464394
+465	22269761.370000001	2	2021-07-02	307	\N	\N	3022	2226976137	57	28464947
+513	10647932.550000001	2	2021-07-02	264	\N	\N	3022	1064793255	57	28230632
+514	2986615.23	2	2021-07-02	265	\N	\N	3022	298661523	57	28230732
+517	14283811.960000001	2	2021-07-02	267	\N	\N	3022	1428381196	57	28230053
+520	12400945.84	2	2021-07-02	268	\N	\N	3022	1240094584	57	28230888
+521	22821635.93	2	2021-07-02	269	\N	\N	3022	2282163593	57	28231143
+522	5259039.8600000003	2	2021-07-02	333	\N	\N	3022	525903986	57	28465062
+523	17659985.699999999	2	2021-07-02	334	\N	\N	3022	1765998570	57	28465165
+530	4837018.1399999997	2	2021-07-02	338	\N	\N	3022	483701814	57	28466512
+533	48142938.950000003	2	2021-07-02	341	\N	\N	3022	4814293895	57	28161313
+534	9674036.2799999993	2	2021-07-02	270	\N	\N	3022	967403628	57	28230384
+535	8213191.8799999999	2	2021-07-02	271	\N	\N	3022	821319188	57	28230396
+536	2175035	2	2021-07-02	272	\N	\N	3022	217503500	57	28230708
+538	17010721.52	2	2021-07-02	273	\N	\N	3022	1701072152	57	28231434
+539	35612140.270000003	2	2021-07-02	342	\N	\N	3022	3561214027	57	28467974
+542	6525105.0099999998	2	2021-07-02	344	\N	\N	3022	652510501	57	28465111
+524	12563261.880000001	2	2021-07-02	278	\N	\N	3004	1256326188	57	28230991
+519	2921688.8100000001	2	2021-07-02	243	\N	\N	3017	292168881	57	28161495
+529	18276786.670000002	2	2021-07-02	301	\N	\N	3017	1827678667	57	28466255
+463	3798195.4500000002	2	2021-07-02	237	\N	\N	3011	379819545	57	28107021
+468	3960511.5	2	2021-07-02	239	\N	\N	3011	396051150	57	28107053
+472	24314943.539999999	2	2021-07-02	311	\N	\N	3011	2431494354	57	28229901
+511	22821635.93	2	2021-07-02	330	\N	\N	3011	2282163593	57	28476225
+516	6038156.8700000001	2	2021-07-02	331	\N	\N	3011	603815687	57	28466336
+525	22399614.210000001	2	2021-07-02	335	\N	\N	3011	2239961421	57	28464980
+528	39702504.609999999	2	2021-07-02	337	\N	\N	3011	3970250461	57	28467240
+531	4155290.75	2	2021-07-02	339	\N	\N	3011	415529075	57	28469636
+541	15679729.949999999	2	2021-07-02	287	\N	\N	3011	1567972995	57	28348669
+527	10160984.42	3	2021-07-02	254	Rechazado	2021-07-08	3061	1016098442	57	28160638
+\.
+
+
+--
+-- Data for Name: cuentas_bancarias; Type: TABLE DATA; Schema: cobranza; Owner: postgres
+--
+
+COPY cobranza.cuentas_bancarias (id_cuenta_bancaria, id_banco, id_empresa, tx_cuenta, st_cuenta_bancaria, fe_registro, id_usuario, nu_comision, st_aplica_comision, tx_ruta_banco, tx_contrato_bancario, nu_consecutivo_lote) FROM stdin;
+12	14	1	01340378313781022623	1	2021-03-12	14	0	0	lafe14	000467382	3023
+2	13	6	01058070605040302010	1	2021-03-01	14	0.5	0	pruebaEntrada	CONTR	3000
+3	14	6	01341020304050607080	1	2021-03-01	14	0.5	0	pruebaEntrada	BANSC	3000
+15	30	1	01750489430071136523	1	2021-03-12	14	0	0	lafe30	3375	3010
+9	6	1	01140165171657000260	1	2021-03-12	14	0	0	lafe06	927404	3009
+4	19	6	01161020304050607080	1	2021-03-01	14	0.5	0	pruebaEntrada	BODCR	3000
+5	30	6	01751020304050607080	1	2021-03-01	14	0.5	0	pruebaEntrada	3375	3000
+6	32	6	01631020304050607080	1	2021-03-01	14	0.5	0	pruebaEntrada	TESR	3000
+16	32	1	01630707667073001881	1	2021-03-12	14	0	0	lafe32	3903	3000
+17	6	6	01011020304050607080	1	2021-03-12	14	0	0	pruebaEntrada	asda	3000
+19	3	6	01021020304050607080	1	2021-03-01	14	0	0	pruebaEntrada	ads	3000
+18	1	6	01011020304050607080\n	1	2021-03-01	14	0	0	pruebaEntrada	\N	3000
+1	12	6	01051020304050607080	1	2021-02-08	14	0.5	0	pruebaEntrada	DOMIC	3000
+8	3	1	01020479830009563810	1	2021-03-12	14	0	0	lafe03	1033	3022
+11	13	1	01510103278103000496	1	2021-03-12	14	0	0	lafe13	998	3004
+10	12	1	01050032081032600187	1	2021-03-12	14	0	\N	lafe12	DOMIC	3061
+14	23	1	01910064222164002699	1	2021-03-12	14	0	0	lafe23	BNC	3017
+13	19	1	01160118910180737473	1	2021-03-12	14	0	0	lafe19	316	3017
+7	1	1	01080112570100039159	1	2021-03-12	14	0	0	lafe01	4058	3011
+\.
+
+
+--
+-- Data for Name: empresas; Type: TABLE DATA; Schema: cobranza; Owner: postgres
+--
+
+COPY cobranza.empresas (id_empresa, tx_empresa, tx_documento, tp_documento, st_empresa, fe_registro, id_usuario, id_contrato) FROM stdin;
+6	Empresa Administradora	236950189	J	1	2021-01-24	1	230000
+1	Seguros La Fe, C.A	467382	J	1	2021-03-12	1	999999
+\.
+
+
+--
+-- Data for Name: estatus; Type: TABLE DATA; Schema: cobranza; Owner: postgres
+--
+
+COPY cobranza.estatus (id_estatus, tx_estatus) FROM stdin;
+1	Generado
+2	Enviado
+3	Rechazado
+4	Procesado
+\.
+
+
+--
+-- Data for Name: estructura_archivos; Type: TABLE DATA; Schema: cobranza; Owner: postgres
+--
+
+COPY cobranza.estructura_archivos (id_estructura_archivo, id_banco, id_tipo_archivo, nu_inicio, nu_longitud, tx_columna, tx_descripcion, tx_orientacion_relleno, tx_posicion_archivo, tx_relleno, tx_valor_defecto, va_formato_fecha, tx_variable, tx_patron_regular, tx_entidad, st_campo, tx_metodo, tx_transformar, tx_caracter_delimitador, tx_estructura_archivo_rb, in_relleno, va_fromato_fecha) FROM stdin;
+116	3	2	1	2	tp_registro	Tipo de registro	I	2	0	2	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+133	1	2	23	8	id_referencia	Referencia de la persona	I	2	0	\N	\N	\N	\N	\N	\N	getIdCliente	\N	\N	\N	\N	\N
+124	3	2	34	2	tp_cuenta	Tipo de cuenta	I	2	\N	\N	\N	\N	\N	\N	\N	getTpCuenta	1	\N	\N	\N	\N
+125	3	2	36	20	nu_cuenta	Numero de Cuenta	I	2	\N	\N	\N	\N	\N	\N	\N	getTxCuenta	\N	\N	\N	\N	\N
+127	3	2	133	10	fe_proceso	Fecha del proceso	I	2	\N	\N	dd/MM/yyyy	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+77	8	1	22	37	id_consecutivo	Consecutivo de archivo.		1			\N	java.lang.Long	[0-9]*	bitacora	1	setIdConsecutivoEmpresa	0	\N	\N	\N	\N
+117	3	2	3	1	tp_documento	Tipo de documento	I	2	0	\N	\N	\N	\N	\N	\N	getTpDocumento	\N	\N	\N	\N	\N
+118	3	2	4	8	tx_documento	Numero de documento	I	2	0	\N	\N	\N	\N	\N	\N	getTxDocumento	\N	\N	\N	\N	\N
+119	3	2	12	1	DI_VERIFICADOR_RIF	Sin definir	I	2	0	0	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+120	3	2	13	10	tx_libre	Uso de Empresa	I	2	0	\N	\N	\N	\N	sdf	\N	\N	\N	\N	\N	\N	\N
+121	3	2	23	8	id_referencia	Referencia de la empresa	I	2	0	\N	\N	\N	\N	\N	\N	getIdCliente	\N	\N	\N	\N	\N
+122	3	2	31	2	nu_cuota	Número de la cuota	I	2	0	1	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+126	3	2	56	77	tx_libre	Uso libre	I	2	0	\N	\N	\N	\N	sdf	\N	\N	\N	\N	\N	\N	\N
+129	3	2	156	20	fe_proceso_2	Fecha de proceso 2\n	I	2	0	\N	yyyyMMdd	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+130	3	2	176	50	tx_libre	Uso Libre	I	2	0	\N	\N	\N	\N	sdf	\N	\N	\N	\N	\N	\N	\N
+123	3	2	33	1	tx_libre	Uso Empresa	I	2	0	C	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+131	1	2	1	2	tp_registro	Tipo de registro	I	2	0	2	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+132	1	2	3	20	nu_cuenta	Numero de cuenta bancaria	I	2	0	\N	\N	\N	\N	\N	\N	getTxCuenta	\N	\N	\N	\N	\N
+134	1	2	31	8	tx_libre	Uso Libre	I	2	 	\N	\N	\N	\N	sdf	\N	\N	\N	\N	\N	\N	\N
+136	1	2	56	40	nm_completo	Nombre Completo	D	2	 	\N	\N	\N	\N	\N	\N	getTxNombre	\N	\N	\N	\N	\N
+137	1	2	96	30	tx_libre	Uso Libre	D	2	 	\N	\N	\N	\N	sdf	\N	\N	\N	\N	\N	\N	\N
+138	1	2	126	2	tx_libre	Uso Libre	I	2	0	\N	\N	\N	\N	sdf	\N	\N	\N	\N	\N	\N	\N
+139	1	2	128	23	tx_libre	Uso Libre	D	2	 	\N	\N	\N	\N	sdf	\N	\N	\N	\N	\N	\N	\N
+160	12	2	1	1	tp_registro	Tipo de registro	I	2	\N	2	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+179	12	2	206	8	tx_libre	Uso Libre	I	2	0	0	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+173	12	2	148	1	tx_libre	Uso Libre	I	2	0	0	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+177	12	2	191	7	tx_libre	Uso Libre	I	2	0	0	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+88	8	1	134	140	fe_vencimiento_tarjeta	Fecha de vencimiento de la tarjeta	\N	2	\N	\N	\N	java.lang.String	[A-Za-z0-9]*	\N	1	\N	0	\N	\N	\N	\N
+76	8	1	16	22	ca_registros	Cantidad de registros.		1			\N	int	[0-9]*	\N	1	\N	0	\N	\N	\N	\N
+89	8	1	140	142	ca_cuotas	Cantidad de cuotas	\N	2	\N	\N	\N	int	[0-9]*	\N	1	\N	0	\N	\N	\N	\N
+91	8	1	159	161	sn_definir	Sin definir	\N	2	\N	\N	\N	java.lang.String	[A-Za-z]*	\N	1	\N	0	\N	\N	\N	\N
+74	8	1	2	8	nu_contrato	Número contrato.		1			\N	java.lang.int	[0-9]*	empresas	1	\N	0	\N	\N	\N	\N
+142	6	2	38	30	nm_completo	Nombre Completo	I	2	\N	\N	\N	\N	\N	\N	\N	getTxNombre	\N	\N	\N	\N	\N
+140	6	2	0	20	nu_cuenta	Numero de cuenta	I	2	\N	\N	\N	\N	\N	\N	\N	getTxCuenta	\N	/	\N	\N	\N
+218	14	2	34	9	nu_documento	Numero documento	I	1	0	\N	\N	\N	\N	empresa_documento	\N	\N	\N	\N	\N	\N	\N
+109	3	2	23	13	mt_cuota	Monto de la cuota general	I	1	0	\N	\N	\N	\N	monto	\N	\N	\N	\N	\N	\N	\N
+161	12	2	2	1	tp_documento	Tipo Documento	I	2	\N	\N	\N	\N	\N	\N	\N	getTpDocumento	\N	\N	\N	\N	\N
+111	3	2	46	10	nu_lote	Lote de envío al banco	I	1	0	\N	\N	\N	\N	lote	\N	\N	\N	\N	\N	\N	\N
+215	14	2	3	8	nu_lote	Numero de lote	I	1	0	\N	\N	\N	\N	lote	\N	\N	\N	\N	\N	\N	\N
+163	12	2	13	21	nu_cuenta	Numero de cuenta	I	2	0	\N	\N	\N	\N	\N	\N	getTxCuenta	\N	\N	\N	\N	\N
+166	12	2	60	9	tx_libre	Uso Libre	D	2	 	 	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+105	3	2	1	2	tp_registro	Tipo de registro	I	1	0	1	\N	\N	\N	\N	\N	\N	0	\N	\N	\N	\N
+108	3	2	13	10	ca_registros	Cantidad de registros	I	1	0	\N	\N	\N	\N	conteo	\N	\N	\N	\N	\N	\N	\N
+112	3	2	56	20	fe_proceso_2	Fecha de proceso 2	I	1	0	\N	yyyyMMdd	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+110	3	2	36	10	fe_proceso	fecha de proceso	I	1	0	\N	dd/MM/yyyy	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+114	3	2	116	10	fe_desde_cobro	Fecha desde del cobro	I	1	0	\N	dd/MM/yyyy	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+115	3	2	126	10	fe_hasta_cobro	Fecha hasta de cobro	I	1	0	\N	dd/MM/yyyy	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+170	12	2	132	1	Uso Libre	Uso Libre	D	2	 	 	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+106	3	2	3	1	tp_empresa	Tipo de empresa	I	1	0\n	\N	\N	\N	\N	empresa_tp_documento	\N	getTpDocumento	0	\N	\N	\N	\N
+205	13	2	118	44	tx_libre	Uso libre	D	2	 	1000	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+167	12	2	69	17	mt_cuota	Monto de la cuota	I	2	0	\N	\N	\N	\N	\N	\N	getMtCobroStr	\N	\N	\N	\N	\N
+180	12	2	216	8	tx_libre	Uso libre	D	2	0	0	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+107	3	2	4	9	nu_documento	Documento del dueño de la empresa	I	1	0	\N	\N	\N	\N	empresa_documento	\N	getTxDocumento	0	\N	\N	\N	\N
+165	12	2	44	16	id_referencia	Referencia del cliente	D	2	 	\N	\N	\N	\N	\N	\N	getIdCliente	\N	\N	\N	\N	\N
+164	12	2	34	10	tx_libre	Uso Libre	D	2	 	 	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+172	12	2	146	2	nu_cuota\n	Numero de la cuota	I	2	1	0	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+168	12	2	86	30	tx_libre	Uso Libre	D	2	 	 	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+141	6	2	20	18	mt_cuota	Monto de la cuota	I	2	\N	\N	\N	\N	\N	\N	\N	getMtCobroStr	6	/	\N	\N	\N
+178	12	2	198	8	nu_cuota	Numero de la cuota	I	2	0	1	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+113	3	2	76	40	tx_libre	Uso libre de la empresa	I	1	0	\N	\N	\N	\N	sdf	\N	\N	\N	\N	\N	\N	\N
+171	12	2	133	13	nu_documento_cobro	Documento de cobro	I	2	0	\N	\N	\N	\N	\N	\N	getTxDocumento	\N	\N	\N	\N	\N
+174	12	2	149	8	fe_proceso	Fecha del proceso	I	2	\N	\N	yyyyMMdd	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+175	12	2	157	4	tx_libre	Uso Libre	I	2	0	0	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+219	14	2	43	7	tx_libre	Uso Libre	I	1	 	 	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+162	12	2	3	10	nu_documento	Numero de documento	I	2	0	\N	\N	\N	\N	\N	\N	getTxDocumento	\N	\N	\N	\N	\N
+176	12	2	161	30	tx_respuesta	respuesta del cobro	D	2	 	 	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+214	14	2	1	2	tx_libre	Uso Libre	I	1	0	2	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+216	14	2	11	22	tx_libre	Uso Libre	I	1	 	 	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+217	14	2	33	1	tp_documento	Tipo de documento	I	1	\N	\N	\N	\N	\N	empresa_tp_documento	\N	\N	\N	\N	\N	\N	\N
+220	14	2	50	35	nm_empresa	Nombre de la empresa	D	1	 	\N	\N	\N	\N	empresa_nombre	\N	\N	\N	\N	\N	\N	\N
+222	14	2	100	4	tx_libre	Moneda Pais	D	1	 	VES	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+224	14	2	139	11	tx_libre	Uso Libre	D	1	 	BANSVECA	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+225	14	2	150	8	fe_proceso	Fecha del proceso	I	1	\N	\N	yyyyMMdd	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+226	14	2	158	3	tx_libre	Uso Libre	D	1	 	CB	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+221	14	2	85	15	mt_cuota	Monto de la cuota	I	1	0	\N	\N	\N	\N	monto	\N	\N	\N	\N	\N	\N	\N
+223	14	2	104	35	nu_cuenta	Numero de cuenta	D	1	 	\N	\N	\N	\N	cuenta_bancaria	\N	\N	\N	\N	\N	\N	\N
+228	14	2	3	8	id_referencia	Referencia del cliente	I	2	0	\N	\N	\N	\N	\N	\N	getIdCliente	\N	\N	\N	\N	\N
+229	14	2	11	2	nu_cuota	Numero de la cuota	I	2	0	10	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+81	8	1	9	21	nu_documento	Documento de identidad	\N	2	\N	\N	\N	java.lang.String	[0-9]*	\N	2	setTxDocumento	1	\N	\N	\N	\N
+182	13	2	1	6	tx_libre	Uso Libre	I	1	0	0	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+147	12	2	16	15	nu_lote	Numero de lote archivo	D	1	 	\N	\N	\N	\N	lote	\N	\N	\N	\N	\N	\N	\N
+150	12	2	42	1	tp_empresa	Tipo documento	I	1	\N	\N	\N	\N	\N	empresa_tp_documento	\N	\N	\N	\N	\N	\N	\N
+151	12	2	43	10	nu_documento	Numero de documento empresa	I	1	0	\N	\N	\N	\N	empresa_documento	\N	\N	\N	\N	\N	\N	\N
+152	12	2	53	8	ca_registros	Cantidad Registros	I	1	0	\N	\N	\N	\N	conteo	\N	\N	\N	\N	\N	\N	\N
+153	12	2	61	17	mt_cuota	Monto de la cuota	I	1	0	\N	\N	\N	\N	monto	\N	\N	\N	\N	\N	\N	\N
+154	12	2	78	8	fe_proceso	Fecha del proceso	I	1	\N	\N	yyyyMMdd	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+155	12	2	86	20	nu_cuenta_empresa	Numero de la cuenta de la empresa	I	1	0	\N	\N	\N	\N	cuenta_bancaria	\N	\N	\N	\N	\N	\N	\N
+143	12	2	0	1	tp_registro	Tipo de registro	I	1	0	1	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+144	12	2	2	12	id_banco	Identificador del banco	D	1	 	BAMRVECA	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+183	13	2	7	8	fe_proceso	Fecho del proceso	I	1	\N	\N	yyyyMMdd	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+184	13	2	15	6	hr_proceso	Hora del proceso	I	1	\N	\N	kkmmss	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+185	13	2	21	8	fe_proceso	Fecha del proceso	I	1	\N	\N	yyyyMMdd	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+186	13	2	29	6	hr_proceso	Hora del proceso	I	1	\N	\N	kkmmss	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+187	13	2	35	14	tx_libre	Uso libre	I	1	0	0	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+145	12	2	14	1	tx_libre	Uso Libre	I	1	0	C	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+146	12	2	15	1	tx_libre	Uso Libre	I\n	1	0	1	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+148	12	2	31	6	tx_libre	Uso Libre	I	1	0	0	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+149	12	2	37	5	nu_contrato_banco	Numero de contrato con el banco	I	1	 	\N	\N	\N	\N	contrato_bancario	\N	\N	\N	\N	\N	\N	\N
+156	12	2	106	7	tx_libre	Uso Libre	I	1	0	0	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+157	12	2	113	8	tx_libre	Uso Libre	I	1	0	0	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+158	12	2	121	88	cd_respuesta_lote	Respuesta del lote	I	1	0	0	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+191	13	2	86	3	tx_libre	Uso Libre	I	1	 	CI	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+159	12	2	125	48	tx_libre	Uso Libre	I	1	 	\N	\N	\N	\N	sdf	\N	\N	\N	\N	\N	\N	\N
+188	13	2	49	6	nu_contrato_bancario	Numero contrato bancario	I	1	0	\N	\N	\N	\N	contrato_bancario	\N	\N	\N	\N	\N	\N	\N
+192	13	2	89	22	nu_cuenta	Numero de cuenta con 10 digitos	I	1	0	\N	\N	\N	\N	cuenta_bancaria_10	\N	\N	\N	\N	\N	\N	\N
+189	13	2	55	6	tx_libre	Uso Libre	I	1	0	12	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+190	13	2	61	25	tx_libre	Uso Libre	I	1	0	0	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+193	13	2	111	60	tx_libre	Uso Libre	I	1	0	0	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+194	13	2	1	6	nu_consecutivo	Numero consecutivo	I	2	0	\N	\N	\N	\N	consecutivo	\N	\N	\N	\N	\N	\N	\N
+195	13	2	7	1	tx_libre	Uso Libre	I	2	0	 	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+208	13	2	7	40	nm_empresa	Nombre de la empresa	D	9	 	\N	\N	\N	\N	empresa_nombre	\N	\N	\N	\N	\N	\N	\N
+230	14	2	13	20	tx_libre	Uso Libre	D	2	 	 	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+209	13	2	47	6	ca_registros	Cantidad de registro	I	9	0	\N	\N	\N	\N	conteo	\N	\N	\N	\N	\N	\N	\N
+210	13	2	53	15	mt_cuota	Monto de la cuota	I	9	0	\N	\N	\N	\N	monto	\N	\N	\N	\N	\N	\N	\N
+200	13	2	41	5	tx_libre	Uso Libre	I	2	0	12	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+201	13	2	46	5	nu_cuota	Numero de la cuota	I	2	0	0	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+211	13	2	68	15	tx_libre	Uso Libre	I	9	0	0	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+212	13	2	83	6	ca_registro	Cantidad de registro	I	9	0	\N	\N	\N	\N	conteo	\N	\N	\N	\N	\N	\N	\N
+204	13	2	76	42	tx_libre	Uso Libre	D	2	 	D0GESTION DE COBRANZA	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+206	13	2	162	9	tx_libre	Uso Libre	I	2	0	0	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+196	13	2	8	2	tp_cuenta	Tipo de cuenta	I	2	0	\N	\N	\N	\N	\N	\N	getTpCuenta	\N	\N	\N	\N	\N
+197	13	2	10	20	nu_cuenta	Numero de la cuenta	I	2	0	\N	\N	\N	\N	\N	\N	getTxCuenta	\N	\N	\N	\N	\N
+198	13	2	30	1	tp_documento	Tipo de documento	I	2	0	\N	\N	\N	\N	\N	\N	getTpDocumento	\N	\N	\N	\N	\N
+199	13	2	31	10	nu_documento	Numero de documento	I	2	0	\N	\N	\N	\N	\N	\N	getTxDocumento	\N	\N	\N	\N	\N
+202	13	2	51	10	id_referencia	Referencia del clientre	I	2	0	\N	\N	\N	\N	\N	\N	getTxDocumento	\N	\N	\N	\N	\N
+207	13	2	1	6	tx_libre	Uso Libre	I	9	0	999999	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+213	13	2	89	82	tx_libre	Uso Libre	I	9	0	0	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+232	14	2	48	3	tx_libre	Uso Libre	I	2	\N	VES	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+233	14	2	51	30	tx_cuenta	Cuenta bancaria	D	2	 	\N	\N	\N	\N	\N	\N	getTxCuenta	\N	\N	\N	\N	\N
+234	14	2	81	11	tx_libre	Uso Libre	D	2	 	BANSVECA	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+235	14	2	92	1	tp_documento	Tipo documento	I	2	0	\N	\N	\N	\N	\N	\N	getTpDocumento	\N	\N	\N	\N	\N
+236	14	2	93	9	tx_documento	Numero documento	I	2	0	\N	\N	\N	\N	\N	\N	getTxDocumento	\N	\N	\N	\N	\N
+237	14	2	102	7	tx_libre	Uso libre	D	2	 	 	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+238	14	2	109	38	nm_completo	Nombre Completo	D	2	 	\N	\N	\N	\N	\N	\N	getTxNombre	\N	\N	\N	\N	\N
+240	14	2	182	6	tx_libre	Uso Libre	D	2	 	 	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+278	32	2	2	4	nu_contratp	Numero contrato	I	1	0	\N	\N	\N	\N	contrato_bancario	\N	\N	\N	\N	\N	\N	\N
+282	32	2	36	1	tp_documento	tipo de documento	I	1	\N	\N	\N	\N	\N	empresa_tp_documento	\N	\N	\N	\N	\N	\N	\N
+239	14	2	147	35	id_referencia	Referencia del client	D	2	 	\N	\N	\N	\N	\N	\N	getIdCliente	\N	\N	\N	\N	\N
+227	14	2	1	2	tx_libre	Uso Libre	I	2	0	3	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+241	14	2	1	2	tx_libre	Uso Libre	I	9	0	4	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+242	14	2	2	15	tx_libre	Uso Libre	I	9	0	1	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+243	14	2	17	15	ca_registro	cantidad de registro	I	9	0	\N	\N	\N	\N	conteo	\N	\N	\N	\N	\N	\N	\N
+244	14	2	32	15	mt_total	Monto Total	I	9	0	\N	\N	\N	\N	monto	\N	\N	\N	\N	\N	\N	\N
+245	19	2	1	2	tp_registro	Tipo registro	I	1	0	1	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+246	19	2	3	8	fe_proceso	Fecha de proceso	I	1	\N	\N	ddMMyyyy	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+247	19	2	11	5	ca_registro	Cantidad de registros	I	1	0	\N	\N	\N	\N	conteo	\N	\N	\N	\N	\N	\N	\N
+248	19	2	16	15	mt_cuota	Monto total	I	1	0	\N	\N	\N	\N	monto	\N	\N	\N	\N	\N	\N	\N
+249	19	2	31	13	nu_cuenta_10	Numero cuenta 10digitos	I	1	0	\N	\N	\N	\N	cuenta_bancaria_10	\N	\N	\N	\N	\N	\N	\N
+250	19	2	43	2	tx_libre	Uso Libre	I	1	0	CR	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+251	19	2	45	16	tx_libre	Uso Libre	I	1	0	0	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+252	19	2	1	2	tp_registro	Tipo registro	I	2	0	2	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+253	19	2	3	7	tx_libre	Uso libre	I	2	 	DB00116	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+254	19	2	10	16	nu_cuenta_10	Numero cuenta bancaria	I	2	0	\N	\N	\N	\N	\N	\N	getTxCuenta	\N	\N	\N	\N	\N
+255	19	2	26	8	id_referencia	Referencia del Cliente	I	2	0	\N	\N	\N	\N	\N	\N	getIdCliente	\N	\N	\N	\N	\N
+256	19	2	34	7	tx_libre	tx_libre	I	2	0	0	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+258	19	2	56	6	tx_libre	Fecha Proceso	I	2	0	\N	ddMMyy	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+260	23	2	61	1	tp_documento	Tipo de documento	I	2	\N	\N	\N	\N	\N	\N	\N	getTpDocumento	\N	\N	\N	\N	\N
+262	23	2	72	1	tp_cuenta	Tipo de cuenta	I	2	\N	\N	\N	\N	\N	\N	\N	getTpCuenta	\N	\N	\N	\N	\N
+263	23	2	73	20	nu_cuenta	Numero de cuenta	I	2	\N	\N	\N	\N	\N	\N	\N	getTxCuenta	\N	\N	\N	\N	\N
+265	23	2	104	10	id_referencia	Referencia del cliente	I	2	0	\N	\N	\N	\N	\N	\N	getIdCliente	\N	\N	\N	\N	\N
+283	32	2	37	9	tx_documento	Numero de documento	I	1	0	\N	\N	\N	\N	empresa_documento	\N	\N	\N	\N	\N	\N	\N
+261	23	2	62	10	nu_documento	Numero de documento	I	2	0	\N	\N	\N	\N	\N	\N	getTxDocumento	\N	\N	\N	\N	\N
+267	30	2	1	20	nu_cuenta	Numero de Cuenta	I	1	0	\N	\N	\N	\N	cuenta_bancaria	\N	\N	\N	\N	\N	\N	\N
+268	30	2	21	8	fe_proceso	Fecha de proceso	I	1	0	\N	yyyyMMdd	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+269	30	2	29	17	mt_cuota	Monto total	I	1	0	\N	\N	\N	\N	monto	\N	\N	\N	\N	\N	\N	\N
+270	30	2	46	4	ca_registros	Cantidad de registros	I	1	0	\N	\N	\N	\N	conteo	\N	\N	\N	\N	\N	\N	\N
+271	30	2	1	4	Contrato_banco	Contrato del banco	I	2	0	\N	\N	\N	\N	contrato_bancario	\N	\N	\N	\N	\N	\N	\N
+275	30	2	47	6	tx_libre	Uso libre	I	2	0	1	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+276	30	2	53	2	tx_libre	Uso libre	I	2	0	0	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+273	30	2	17	20	nu_cuenta	Cuenta bancaria	I	2	0	\N	\N	\N	\N	\N	\N	getTxCuenta	\N	\N	\N	\N	\N
+285	32	2	51	6	fe_proceso	fecha del proceso	I	1	\N	\N	ddMMyy	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+274	30	2	37	10	nu_documento	Numero de documento	I	2	0	\N	\N	\N	\N	\N	\N	getTxDocumento	\N	\N	\N	\N	\N
+286	32	2	57	6	fe_proceso	Fecha del proceso	I	1	\N	\N	ddMMyy	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+287	32	2	63	5	ca_registros	Cantidad de registros	I	1	0	\N	\N	\N	\N	conteo	\N	\N	\N	\N	\N	\N	\N
+288	32	2	68	15	mt_total	Monto total	I	1	0	\N	\N	\N	\N	monto	\N	\N	\N	\N	\N	\N	\N
+289	32	2	1	1	tx_libre	Uso Libre	I	2	0	D	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+257	19	2	41	15	mt_cuota	Monto de la cuota	I	2	0	\N	\N	\N	\N	\N	\N	getMtCobroStr	\N	\N	\N	\N	\N
+264	23	2	93	11	mt_cuota	Monto de la cuota	I	2	0	\N	\N	\N	\N	\N	\N	getMtCobroStr	\N	\N	\N	\N	\N
+272	30	2	5	12	mt_cuota	Monto de la cuota	I	2	0	\N	\N	\N	\N	\N	\N	getMtCobroStr	\N	\N	\N	\N	\N
+203	13	2	61	15	mt_cuota	Monto de la cuota	I	2	0	\N	\N	\N	\N	\N	\N	getMtCobroStr	\N	\N	\N	\N	\N
+266	23	2	114	2	nu_cuota	Numero  de la cuota	I	2	0	1	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+259	23	2	1	60	nm_completo	Nombre Completo	D	2	 	\N	\N	\N	\N	\N	\N	getTxNombre	\N	\N	\N	\N	\N
+290	32	2	2	20	tx_cuenta	Numero de cuenta	I	2	0	\N	\N	\N	\N	\N	\N	getTxCuenta	\N	\N	\N	\N	\N
+291	32	2	22	1	tp_documento	Tipo de documento	I	2	\N	\N	\N	\N	\N	\N	\N	getTpDocumento	\N	\N	\N	\N	\N
+292	32	2	23	9	nu_documento	Numero de documento	I	2	0	\N	\N	\N	\N	\N	\N	getTxDocumento	\N	\N	\N	\N	\N
+293	32	2	32	5	tx_libre	Uso Libre	I	2	 	 	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+294	32	2	37	15	mt_cuota	Monto de la cuota	I	2	0	\N	\N	\N	\N	\N	\N	getMontoFormateado	\N	\N	\N	\N	\N
+295	32	2	52	20	tx_libre	Uso Libre	I	2	0	0	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+277	32	2	1	1	tx_libre	Uso Libre	I	1	 	H	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+279	32	2	6	1	tx_libre	Uso Libre	I	1	 	1	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+284	32	2	46	5	tx_libre	Uso Libre	I	1	 	 	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+280	32	2	7	9	nu_lote	Numero de lote	I	1	0	\N	\N	\N	\N	lote	\N	\N	\N	\N	\N	\N	\N
+281	32	2	16	20	nu_cuenta	Numero de cuenta	I	1	\N	\N	\N	\N	\N	cuenta_bancaria	\N	\N	\N	\N	\N	\N	\N
+296	1	3	1	4	tx_validacion	Validacion de respuesta de cobro	\N	\N	\N	621	\N	\N	\N	id_referencia	\N	\N	\N	\N	1	\N	\N
+297	1	3	69	77	tx_referencia	Referencia de validacion	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+298	1	3	54	69	tx_monto	Monto de validacion	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+300	13	3	53	61	tx_referencia	Referencia del cliente	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+301	13	3	61	76	tx_monto	Validacion de monto	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+315	30	3	1	21	tx_referencia	Referencia del cliente	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+303	13	3	0	1	tx_validacion	Validacion lectura	\N	\N	\N	\N	\N	\N	\N	id_referencia	\N	\N	\N	\N	2	\N	\N
+304	19	3	0	6	tx_validacion	Validacion Lectura	\N	\N	\N	\N	\N	no	\N	id_referencia	\N	\N	\N	\N	2	\N	\N
+305	19	3	102	110	tx_referencia	Referencia Cliente	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+306	19	3	72	87	tx_monto	Monto de Validacion	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+308	32	3	42	56	tx_monto	Monto Validacion	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+316	30	3	22	45	tx_monto	Monto de validacion	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+299	1	3	77	178	tx_error	Error del validacion de cuota	\N	\N	\N	\N	\N	\N	(AUTORIZADO)	\N	\N	\N	\N	\N	\N	\N	\N
+313	23	3	42	65	tx_referencia	Referencia cliente	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+318	12	3	1	2	tx_validacion	Validacion de lectura	\N	\N	\N	2	\N	\N	\N	id_referencia	\N	\N	\N	\N	1	\N	\N
+328	14	3	7	37	tx_error	Error de lectura	\N	\N	\N	\N	\N	\N	(COBRO EXITOSO)	\N	\N	\N	\N	\N	20	\N	\N
+310	32	3	58	92	tx_error	Error validacion	\N	\N	\N	\N	\N	\N	(Procesado)	\N	\N	\N	\N	\N	\N	\N	\N
+319	12	3	116	126	tx_referencia	Referencia clente	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+320	12	3	70	86	tx_monto	monto de la cuota	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+311	23	3	42	46	tx_validacion	Validacion Lectura	\N	\N	\N	0191	\N	no	\N	tx_cuenta	\N	\N	\N	\N	1	\N	\N
+314	30	3	1	5	tx_validacion	Validacion lectura	\N	\N	\N	0175	\N	\N	\N	tx_cuenta	\N	\N	\N	\N	1	\N	\N
+307	32	3	0	1	tx_validacion	Validacion Lectura	\N	\N	\N	\N	\N	\N	\N	tx_cuenta	\N	\N	\N	\N	2	\N	\N
+309	32	3	21	41	tx_referencia	Referencia del cliente	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+312	23	3	86	106	tx_monto	monto validacion	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+326	14	3	37	45	id_referencia	Referencia del cliente	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	10	\N	\N
+321	12	3	157	191	tx_error	Error de la cuota	\N	\N	\N	\N	\N	\N	(COBRO EXITOSO|FACTURA)	\N	\N	\N	\N	\N	\N	\N	\N
+324	14	3	1	3	tx_campo1	Validacion de lectura	\N	\N	\N	02	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+325	14	3	1	3	tx_campo2	validacion de cuenta	\N	\N	\N	03	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+323	14	3	0	3	tx_validacion	Validacion de lectura	\N	\N	\N	\N	\N	\N	\N	id_referencia	\N	\N	\N	\N	3	\N	\N
+302	13	3	118	162	tx_error	Error de la cuota	\N	\N	\N	\N	\N	\N	(PROCESADO)	\N	\N	\N	\N	\N	\N	\N	\N
+327	14	3	82	97	tx_monto	Monto de la operacion	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	10	\N	\N
+329	6	4	1	3	tx_monto	Monto del cobro	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+330	6	4	1	1	tx_referencia	Referencia cliente	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+331	6	4	1	5	tx_error	Error del cobro	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+75	8	1	8	16	fe_archivo	Fecha del archivo\n		1			\N	java.lang.String	[0-9]*	\N	1	\N	0	\N	\N	\N	\N
+78	8	1	0	1	tp_registro	Tipo de registro	\N	2	\N	\N	\N	int	[0-9]*	\N	1	\N	0	\N	\N	\N	\N
+84	8	1	81	96	cd_documento_cobro	Documento de cobro al cual se debitará el dinero	\N	2	\N	\N	\N	java.lang.String	[A-Za-z0-9]*	\N	1	\N	0	\N	\N	\N	\N
+90	8	1	142	159	mt_cobro	Monto de cobro	\N	2	\N	\N	\N	java.math.BigDecimal	[0-9]*	\N	3	setMtCobro	0	\N	\N	\N	\N
+95	8	1	173	193	tx_libre	uso libre de la empresa	\N	2	\N	\N	\N	java.lang.String	[A-Za-z0-9]*	\N	1	\N	0	\N	\N	\N	\N
+317	30	3	85	102	tx_error	Error del archivo	\N	\N	\N	\N	\N	\N	(POR DISPONIBLE)	\N	\N	\N	\N	\N	\N	\N	\N
+96	8	1	193	213	tx_libre	uso libre empresa	\N	2	\N	\N	\N	java.lang.String	[A-Za-z0-9]*	\N	1	\N	0	\N	\N	\N	\N
+98	8	1	215	218	cd_nomina	nomima	\N	2	\N	\N	\N	java.lang.String	[0-9]*	\N	1	\N	0	\N	\N	\N	\N
+99	8	1	218	223	nu_plan	Numero de plan	\N	2	\N	\N	\N	java.lang.String	[0-9]*	\N	1	\N	0	\N	\N	\N	\N
+100	8	1	223	343	tx_correo	Correo electronico	\N	2	\N	\N	\N	java.lang.String	\N	\N	1	\N	0	\N	\N	\N	\N
+79	8	1	2	5	co_banco	Código banco	\N	2	\N	\N	\N	java.lang.Long	[0-9]*	bancos	2	setIdBanco	0	\N	\N	\N	\N
+80	8	1	5	9	tp_documento	Tipo de documento	\N	2	\N	\N	\N	java.lang.String	[A-Za-z]*	documentos	2	setTpDocumento	0	\N	\N	\N	\N
+87	8	1	118	134	nu_tarjeta	Número de tarjeta credito/debito	\N	2	\N	\N	\N	java.lang.String	[0-9]*	\N	1	\N	0	\N	\N	\N	\N
+92	8	1	161	169	fe_envio	fecha de envio al cobro	\N	2	\N	\N	\N	java.lang.String	[0-9]*	\N	1	\N	0	\N	\N	\N	\N
+93	8	1	169	171	ca_dias	Cantidad de días para la segunda cuota	\N	2	\N	\N	\N	java.lang.String	[0-9]*	\N	1	\N	0	\N	\N	\N	\N
+94	8	1	171	173	sn_definir	Sin definir	\N	2	\N	\N	\N	java.lang.String	[0-9]*	\N	1	\N	0	\N	\N	\N	\N
+73	8	1	0	1	tpregistro	Tipo de registro.		1			\N	java.lang.String	[0-9]	\N	1	\N	0	\N	\N	\N	\N
+85	8	1	96	98	tp_cuenta	tipo de cuenta bancaria	\N	2	\N	\N	\N	java.lang.String	[A-Za-z]*	\N	2	setTpCuenta	0	\N	\N	\N	\N
+86	8	1	98	118	nu_cuenta	Número de cuenta bancaria	\N	2	\N	\N	\N	java.lang.String	[0-9]*	cuentas	2	setTxCuenta	0	\N	\N	\N	\N
+102	8	1	363	380	sn_definir	sin definir	\N	2	\N	\N	\N	java.lang.String	[0-9]*	\N	1	\N	0	\N	\N	\N	\N
+103	8	1	380	381	sn_definir	sin definir	\N	2	\N	\N	\N	java.lang.String	\N	\N	1	\N	0	\N	\N	\N	\N
+97	8	1	213	215	cd_grupo	grupo de cobro	\N	2	\N	\N	\N	java.lang.String	[A-Za-z]*	\N	2	setTxGrupo	0	\N	\N	\N	\N
+101	8	1	343	363	tx_telefono	Número telefonico	\N	2	\N	\N	\N	java.lang.String	[0-9]*	\N	2	setNuTelefono	0	\N	\N	\N	\N
+83	8	1	51	81	cd_documento_referencia	Referencia libre para usar desde sistemas externos	\N	2	\N	\N	\N	java.lang.String	\N	\N	2	setTxReferencia	0	\N	\N	\N	\N
+82	8	1	21	36	nm_cliente	Nombres del cliente	\N	2	\N	\N	\N	java.lang.String	\N	\N	2	setTxNombre	0	\N	\N	\N	\N
+181	12	2	222	35	tx_libre	Uso Libre	D	2	 	0	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N	\N
+332	8	1	142	159	tx_monto_str	Monto cobro en string	\N	2	\N	\N	\N	java.lang.String	[0-9]*	\N	2	setMtCobroStr	0	\N	\N	\N	\N
+135	1	2	39	17	mt_cuota	Monto de la cuota	I	2	0	\N	\N	\N	\N	\N	\N	getMtCobroStr	\N	\N	\N	\N	\N
+231	14	2	33	15	mt_cuota	Monto de la cuota	I	2	0	\N	\N	\N	\N	\N	\N	getMtCobroStr	\N	\N	\N	\N	\N
+128	3	2	143	13	mt_cuota	Monto de la cuota	I	2	0	\N	\N	\N	\N	\N	\N	getMtCobroStr	\N	\N	\N	\N	\N
+169	12	2	116	16	id_referencia	Referencia del cliente	D	2	 	\N	\N	\N	\N	\N	\N	getIdCliente	\N	\N	\N	\N	\N
+104	8	1	36	51	ap_cliente	Apellidos del cliente	\N	2	\N	\N	\N	java.lang.String	\N	\N	2	setTxApellido	0	\N	\N	\N	\N
+\.
+
+
+--
+-- Data for Name: tipo_documento; Type: TABLE DATA; Schema: cobranza; Owner: postgres
+--
+
+COPY cobranza.tipo_documento (id_tipo_documento, tx_documento, st_documento, tx_tipo_documento) FROM stdin;
+1	E	1	Extranjero
+2	V	1	Venezolano
+3	J	1	Juridico
+4	G	1	Gubernamental
+\.
+
+
+--
+-- Data for Name: tipos_archivo; Type: TABLE DATA; Schema: cobranza; Owner: postgres
+--
+
+COPY cobranza.tipos_archivo (id_tipo_archivo, tx_archivo, tx_formato, st_archivo, fe_registro, id_usuario, tp_archivo, ca_caracteres_cab, ca_caracteres_det, ca_caracteres_pie, tx_caracter_csv) FROM stdin;
+1	Generacion de Cobros	txt	1	2021-02-01	14	GC	\N	\N	\N	\N
+2	Generación de Domicilio Bancario	txt	1	2021-02-01	14	GDC	\N	\N	\N	\N
+3	Validacion de cobros	txt	1	2021-03-01	14	BC	\N	\N	\N	\N
+4	Validacion de cobros Excel	xlsx	1	2021-03-01	14	BCX	\N	\N	\N	\N
+\.
+
+
+--
+-- Data for Name: usuarios; Type: TABLE DATA; Schema: cobranza; Owner: postgres
+--
+
+COPY cobranza.usuarios (id_usuario, tx_usuario, tx_clave, id_empresa, st_usuario, fe_registro, tx_descripcion) FROM stdin;
+14	admin	503a7a0fbf26f6947a236736bf815f7b	6	1	2020-01-27	Usuario Administrador
+1	selafe	503a7a0fbf26f6947a236736bf815f7b	1	1	2021-03-13	Seguros La Fe C.A
+15	AITRIAGO	503a7a0fbf26f6947a236736bf815f7b	1	1	2020-03-25	Ana Itriago
+16	KQUINTERO	503a7a0fbf26f6947a236736bf815f7b	1	1	2020-03-25	Keile Quintero
+18	NPEREZ	503a7a0fbf26f6947a236736bf815f7b	1	1	2020-03-25	Nicolas Perez
+19	EBERMUDEZ	503a7a0fbf26f6947a236736bf815f7b	1	1	2020-03-25	Edwin Bermudez
+17	YPERDOMO	503a7a0fbf26f6947a236736bf815f7b	1	1	2020-03-25	Yesmary Perdomo
+\.
+
+
+--
+-- Data for Name: ordenes; Type: TABLE DATA; Schema: colas; Owner: postgres
+--
+
+COPY colas.ordenes (nu_secuencia, parametro_uno, parametro_dos, parametro_tres, parametro_cuatro, fe_registro, fe_termino, nu_cola, st_orden, nu_programa, id_usuario, parametro_cinco, parametro_seis, tx_ruta_archivos) FROM stdin;
+318	\N	1	2021-05-19	2021-05-19	2021-05-19 00:00:00-04	\N	4	3	6	17	JRCOBR01	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR01_1621430011909.pdf
+319	\N	1	2021-05-19	2021-05-19	2021-05-19 00:00:00-04	\N	4	3	6	17	JRCOBR03	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR03_1621430016909.pdf
+320	\N	1	2021-05-18	2021-05-18	2021-05-19 00:00:00-04	\N	4	3	6	17	JRCOBR01	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR01_1621430087021.pdf
+321	\N	1	2021-05-18	2021-05-18	2021-05-19 00:00:00-04	\N	4	3	6	17	JRCOBR03	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR03_1621430092027.pdf
+322		1	2021-05-10	2021-05-19	2021-05-19 00:00:00-04	\N	4	3	5	1	JRCOBR02	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR02_1621444342785.pdf
+323		1	2021-05-03	2021-05-19	2021-05-19 00:00:00-04	\N	4	3	5	17	JRCOBR02	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR02_1621446228065.pdf
+327	\N	\N	\N	\N	2021-05-20 10:01:43.527-04	\N	2	3	5	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe12\\AF_12_1621519303294.txt
+339		1	2021-05-13	2021-05-25	2021-05-25 00:00:00-04	\N	4	3	5	17	JRCOBR02	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR02_1621958021207.pdf
+326	1	12	44	\N	2021-05-20 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe12\\12_1621519303979.txt
+330	1	14	41	\N	2021-05-20 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe14\\14_1621533855828.txt
+334	\N	\N	\N	\N	2021-05-21 10:08:00.273-04	\N	2	3	5	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe12\\AF_12_1621606080076.txt
+340		1	2021-05-01	2021-05-25	2021-05-25 00:00:00-04	\N	4	3	5	1	JRCOBR02	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR02_1621965518210.pdf
+333	1	12	44	\N	2021-05-21 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe12\\12_1621606080627.txt
+324	\N	1	2021-05-18	2021-05-20	2021-05-20 00:00:00-04	\N	4	3	6	17	JRCOBR01	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR01_1621955709009.pdf
+325	\N	1	2021-05-18	2021-05-20	2021-05-20 00:00:00-04	\N	4	3	6	17	JRCOBR03	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR03_1621955732695.pdf
+328	\N	1	2021-05-20	2021-05-20	2021-05-20 00:00:00-04	\N	4	3	6	17	JRCOBR01	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR01_1621955737717.pdf
+329	\N	1	2021-05-20	2021-05-20	2021-05-20 00:00:00-04	\N	4	3	6	17	JRCOBR03	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR03_1621955742726.pdf
+331	\N	1	2021-05-18	2021-05-18	2021-05-21 00:00:00-04	\N	4	3	6	17	JRCOBR01	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR01_1621955747746.pdf
+332	\N	1	2021-05-18	2021-05-18	2021-05-21 00:00:00-04	\N	4	3	6	17	JRCOBR03	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR03_1621955752750.pdf
+335		1	2021-05-01	2021-05-25	2021-05-25 00:00:00-04	\N	4	3	5	1	JRCOBR02	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR02_1621955762786.pdf
+336		1	2021-05-01	2021-05-26	2021-05-25 00:00:00-04	\N	4	3	5	1	JRCOBR02	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR02_1621956584045.pdf
+337		1	2021-05-01	2021-05-25	2021-05-25 00:00:00-04	\N	4	3	5	1	JRCOBR02	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR02_1621956679202.pdf
+338		1	2021-05-01	2021-05-25	2021-05-25 00:00:00-04	\N	4	3	5	1	JRCOBR02	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR02_1621956694213.pdf
+341		1	2021-05-13	2021-05-25	2021-05-25 00:00:00-04	\N	4	3	5	1	JRCOBR02	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR02_1621965688435.pdf
+344	\N	1	2021-05-25	2021-05-25	2021-05-25 00:00:00-04	\N	4	3	6	17	JRCOBR03	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR03_1621966830158.pdf
+348	1	19	45	\N	2021-05-25 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe19\\19_1621967845660.txt
+345	1	14	45	\N	2021-05-25 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe14\\14_1621967640520.txt
+342	999999_2505202154756950.txt	8	1	1	2021-05-25 00:00:00-04	\N	1	3	1	17	45	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\importacion\\LOG_1621966735016.txt
+343	\N	1	2021-05-25	2021-05-25	2021-05-25 00:00:00-04	\N	4	3	6	17	JRCOBR01	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR01_1621966825080.pdf
+347	1	12	45	\N	2021-05-25 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe12\\12_1621967800775.txt
+346	1	3	45	\N	2021-05-25 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe03\\3_1621967745532.txt
+349	1	23	45	\N	2021-05-25 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe23\\23_1621967880640.txt
+351	999999_2605202154757373.txt	8	1	1	2021-05-26 00:00:00-04	\N	1	3	7	17		\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\importacion\\LOG_1622035776557.txt
+350	1	1	45	\N	2021-05-25 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe01\\1_1621968606861.txt
+352	999999_2605202154757373.txt	8	1	1	2021-05-26 00:00:00-04	\N	1	3	1	17	46	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\importacion\\LOG_1622035964568.txt
+353	\N	1	2021-05-26	2021-05-26	2021-05-26 00:00:00-04	\N	4	3	6	17	JRCOBR01	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR01_1622036050090.pdf
+354	\N	1	2021-05-26	2021-05-26	2021-05-26 00:00:00-04	\N	4	3	6	17	JRCOBR03	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR03_1622036055614.pdf
+368		1	2021-05-26	2021-05-26	2021-06-01 00:00:00-04	\N	4	3	5	1	JRCOBR02	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR02_1622549713757.pdf
+355	1	3	46	\N	2021-05-26 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe03\\3_1622036449844.txt
+356	1	23	46	\N	2021-05-26 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe23\\23_1622036615090.txt
+369		1	2021-05-25	2021-05-25	2021-06-01 00:00:00-04	\N	4	3	5	1	JRCOBR02	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR02_1622550075981.pdf
+357	1	23	46	\N	2021-05-26 00:00:00-04	\N	2	3	2	1	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe23\\23_1622036705085.txt
+358	\N	1	2021-05-26	2021-05-26	2021-05-26 00:00:00-04	\N	4	3	6	1	JRCOBR01	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR01_1622036881918.pdf
+359	\N	1	2021-05-26	2021-05-26	2021-05-26 00:00:00-04	\N	4	3	6	1	JRCOBR03	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR03_1622036886937.pdf
+370	999999_0206202154798710.txt	8	1	1	2021-06-02 00:00:00-04	\N	1	3	7	17		\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\importacion\\LOG_1622642883635.txt
+360	1	3	46	\N	2021-05-26 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe03\\3_1622037316216.txt
+371	999999_0206202154798710.txt	8	1	1	2021-06-02 00:00:00-04	\N	1	3	7	1		\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\importacion\\LOG_1622643340557.txt
+361	1	23	46	\N	2021-05-26 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe23\\23_1622037346086.txt
+362	1	19	46	\N	2021-05-26 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe19\\19_1622037406394.txt
+363		1	2021-05-25	2021-05-27	2021-05-27 00:00:00-04	\N	4	3	5	1	JRCOBR02	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR02_1622123150707.pdf
+364		1	2021-05-01	2021-05-27	2021-05-27 00:00:00-04	\N	4	3	5	17	JRCOBR02	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR02_1622128659659.pdf
+377	1	14	47	\N	2021-06-02 00:00:00-04	\N	2	3	2	1	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe14\\14_1622644236150.txt
+365		1	2021-05-01	2021-05-28	2021-05-28 00:00:00-04	\N	4	3	5	17	JRCOBR02	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR02_1622205107012.pdf
+366		1	2021-05-26	2021-05-26	2021-06-01 00:00:00-04	\N	4	3	5	1	JRCOBR02	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR02_1622549527081.pdf
+367		1	2021-05-26	2021-01-26	2021-06-01 00:00:00-04	\N	4	3	5	1	JRCOBR02	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR02_1622549595139.pdf
+372	999999_0206202154798710.txt	8	1	1	2021-06-02 00:00:00-04	\N	1	3	1	1	47	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\importacion\\LOG_1622643520123.txt
+374	\N	1	2021-06-02	2021-06-02	2021-06-02 00:00:00-04	\N	4	3	6	1	JRCOBR03	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR03_1622643560413.pdf
+373	\N	1	2021-06-02	2021-06-02	2021-06-02 00:00:00-04	\N	4	3	6	1	JRCOBR01	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR01_1622643548185.pdf
+378	\N	1	2021-06-02	2021-06-02	2021-06-02 00:00:00-04	\N	4	3	6	17	JRCOBR01	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR01_1622644707252.pdf
+375	1	30	47	\N	2021-06-02 00:00:00-04	\N	2	3	2	1	\N	\N	\N
+379	\N	1	2021-06-02	2021-06-02	2021-06-02 00:00:00-04	\N	4	3	6	17	JRCOBR03	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR03_1622644712254.pdf
+376	1	30	47	\N	2021-06-02 00:00:00-04	\N	2	3	2	1	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe30\\30_1622644171084.txt
+380	\N	1	2021-06-02	2021-06-02	2021-06-02 00:00:00-04	\N	4	3	6	1	JRCOBR01	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR01_1622645122914.pdf
+381	\N	1	2021-06-02	2021-06-02	2021-06-02 00:00:00-04	\N	4	3	6	1	JRCOBR03	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR03_1622645127939.pdf
+382	\N	1	2021-06-02	2021-06-02	2021-06-02 00:00:00-04	\N	4	3	6	1	JRCOBR01	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR01_1622645263211.pdf
+383	\N	1	2021-06-02	2021-06-02	2021-06-02 00:00:00-04	\N	4	3	6	1	JRCOBR03	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR03_1622645268230.pdf
+384	1	1	47	\N	2021-06-02 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe01\\1_1622646069143.txt
+385	1	19	47	\N	2021-06-02 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe19\\19_1622646349569.txt
+386	1	13	47	\N	2021-06-02 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe13\\13_1622646499876.txt
+387	1	23	47	\N	2021-06-02 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe23\\23_1622646560113.txt
+389	\N	\N	\N	\N	2021-06-02 11:10:30.139-04	\N	2	3	5	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe12\\AF_12_1622646630079.txt
+388	1	12	47	\N	2021-06-02 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe12\\12_1622646630357.txt
+390	1	3	47	\N	2021-06-02 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe03\\3_1622646920747.txt
+404	1	3	47	\N	2021-06-02 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe03\\3_1622654947907.txt
+391	1	30	47	\N	2021-06-02 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe30\\30_1622647006802.txt
+392	1	6	47	\N	2021-06-02 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe06\\6_1622647056910.txt
+393	1	14	47	\N	2021-06-02 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe14\\14_1622647112068.txt
+405	1	19	47	\N	2021-06-02 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe19\\19_1622655043367.txt
+394	1	19	47	\N	2021-06-02 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe19\\19_1622647177133.txt
+395	1	23	47	\N	2021-06-02 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe23\\23_1622647267239.txt
+407	\N	\N	\N	\N	2021-06-02 13:57:20.992-04	\N	2	3	5	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe12\\AF_12_1622656640943.txt
+396	1	23	47	\N	2021-06-02 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe23\\23_1622647277120.txt
+413	\N	1	2021-06-02	2021-06-02	2021-06-03 00:00:00-04	\N	4	3	6	17	JRCOBR01	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR01_1622729023796.pdf
+397	1	12	47	\N	2021-06-02 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe12\\12_1622647282364.txt
+406	1	12	47	\N	2021-06-02 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe12\\12_1622656641430.txt
+398	1	3	47	\N	2021-06-02 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe03\\3_1622647297453.txt
+399	1	3	47	\N	2021-06-02 00:00:00-04	\N	2	3	2	1	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe03\\3_1622654214713.txt
+401	\N	\N	\N	\N	2021-06-02 13:18:03.872-04	\N	2	3	5	1	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe12\\AF_12_1622654283819.txt
+400	1	12	47	\N	2021-06-02 00:00:00-04	\N	2	3	2	1	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe12\\12_1622654284087.txt
+402	1	19	47	\N	2021-06-02 00:00:00-04	\N	2	3	2	1	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe19\\19_1622654343815.txt
+417	999999_0306202154801644.txt	8	1	1	2021-06-03 00:00:00-04	\N	1	3	1	17	48	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\importacion\\LOG_1622730391832.txt
+403	1	14	47	\N	2021-06-02 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe14\\14_1622654857641.txt
+410	\N	1	2021-06-02	2021-06-02	2021-06-03 00:00:00-04	\N	4	3	6	1	JRCOBR03	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR03_1622721772675.pdf
+409	\N	1	2021-06-02	2021-06-02	2021-06-03 00:00:00-04	\N	4	3	6	1	JRCOBR01	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR01_1622721759532.pdf
+414	\N	1	2021-06-02	2021-06-02	2021-06-03 00:00:00-04	\N	4	3	6	17	JRCOBR03	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR03_1622729027427.pdf
+408	1	13	47	\N	2021-06-03 00:00:00-04	\N	2	3	2	1	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe13\\13_1622721957617.txt
+411	\N	1	2021-06-02	2021-06-02	2021-06-03 00:00:00-04	\N	4	3	6	1	JRCOBR01	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR01_1622724807252.pdf
+415	999999_0306202154801644.txt	8	1	1	2021-06-03 00:00:00-04	\N	1	3	7	17		\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\importacion\\LOG_1622729825889.txt
+412	\N	1	2021-06-02	2021-06-02	2021-06-03 00:00:00-04	\N	4	3	6	1	JRCOBR03	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR03_1622724810042.pdf
+416	999999_0306202154801644.txt	8	1	1	2021-06-03 00:00:00-04	\N	1	3	7	17		\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\importacion\\LOG_1622730088466.txt
+418	\N	1	2021-06-03	2021-06-03	2021-06-03 00:00:00-04	\N	4	3	6	17	JRCOBR01	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR01_1622730502286.pdf
+419	\N	1	2021-06-03	2021-06-03	2021-06-03 00:00:00-04	\N	4	3	6	17	JRCOBR03	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR03_1622730506068.pdf
+420	1	3	48	\N	2021-06-03 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe03\\3_1622730692745.txt
+422	\N	\N	\N	\N	2021-06-03 10:37:33.237-04	\N	2	3	5	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe12\\AF_12_1622731053172.txt
+421	1	12	48	\N	2021-06-03 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe12\\12_1622731053481.txt
+423	1	13	48	\N	2021-06-03 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe13\\13_1622731213417.txt
+424	1	30	48	\N	2021-06-03 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe30\\30_1622731503850.txt
+431	1	3	49	\N	2021-06-07 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe03\\3_1623088126241.txt
+425	1	30	48	\N	2021-06-03 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe30\\30_1622731508794.txt
+426	1	30	48	\N	2021-06-03 00:00:00-04	\N	2	3	2	1	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe30\\30_1622732335276.txt
+427	1	1	48	\N	2021-06-03 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe01\\1_1622732891014.txt
+432	1	1	49	\N	2021-06-07 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe01\\1_1623088250661.txt
+446	1	30	50	\N	2021-06-08 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe30\\30_1623166036081.txt
+433	1	12	49	\N	2021-06-07 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe12\\12_1623088336240.txt
+434	1	12	49	\N	2021-06-07 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe12\\12_1623089412569.txt
+451	1	23	50	\N	2021-06-08 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe23\\23_1623167073054.txt
+436	\N	1	2021-06-07	2021-06-07	2021-06-07 00:00:00-04	\N	4	3	6	1	JRCOBR03	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR03_1623090756819.pdf
+435	\N	1	2021-06-07	2021-06-07	2021-06-07 00:00:00-04	\N	4	3	6	1	JRCOBR01	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR01_1623090751400.pdf
+437	999999_0706202155454778.txt	8	1	1	2021-06-07 00:00:00-04	\N	1	3	7	1		\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\importacion\\LOG_1623090830689.txt
+438		1	2021-06-03	2021-06-03	2021-06-07 00:00:00-04	\N	4	3	5	1	JRCOBR02	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR02_1623091549041.pdf
+439	\N	1	2021-06-07	2021-06-07	2021-06-07 00:00:00-04	\N	4	3	6	1	JRCOBR01	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR01_1623093301657.pdf
+440	\N	1	2021-06-07	2021-06-07	2021-06-07 00:00:00-04	\N	4	3	6	1	JRCOBR03	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR03_1623093302504.pdf
+428	999999_0706202155454778.txt	8	1	1	2021-06-07 00:00:00-04	\N	1	3	1	17	49	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\importacion\\LOG_1623087713237.txt
+429	\N	1	2021-06-07	2021-06-07	2021-06-07 00:00:00-04	\N	4	3	6	17	JRCOBR01	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR01_1623087734740.pdf
+430	\N	1	2021-06-07	2021-06-07	2021-06-07 00:00:00-04	\N	4	3	6	17	JRCOBR03	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR03_1623087745171.pdf
+447	1	3	50	\N	2021-06-08 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe03\\3_1623166101124.txt
+441	999999_0806202155455189.txt	8	1	1	2021-06-08 00:00:00-04	\N	1	3	1	17	50	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\importacion\\LOG_1623165279112.txt
+442	\N	1	2021-06-08	2021-06-08	2021-06-08 00:00:00-04	\N	4	3	6	17	JRCOBR01	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR01_1623165291191.pdf
+443	\N	1	2021-06-08	2021-06-08	2021-06-08 00:00:00-04	\N	4	3	6	17	JRCOBR03	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR03_1623165295931.pdf
+444	1	23	50	\N	2021-06-08 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe23\\23_1623165816051.txt
+448	1	19	50	\N	2021-06-08 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe19\\19_1623166156144.txt
+445	1	14	50	\N	2021-06-08 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe14\\14_1623165975797.txt
+449	1	6	50	\N	2021-06-08 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe06\\6_1623166281411.txt
+450	1	12	50	\N	2021-06-08 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe12\\12_1623166331714.txt
+454	1	1	50	\N	2021-06-08 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe01\\1_1623167880583.txt
+452	1	23	50	\N	2021-06-08 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe23\\23_1623167872516.txt
+453	1	23	50	\N	2021-06-08 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe23\\23_1623167875335.txt
+455	1	12	50	\N	2021-06-08 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe12\\12_1623168571557.txt
+456	\N	1	2021-06-08	2021-06-08	2021-06-08 00:00:00-04	\N	4	3	6	17	JRCOBR01	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR01_1623168656369.pdf
+457	\N	1	2021-06-08	2021-06-08	2021-06-08 00:00:00-04	\N	4	3	6	17	JRCOBR03	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR03_1623168661155.pdf
+458	1	6	50	\N	2021-06-08 00:00:00-04	\N	2	3	2	1	\N	\N	\N
+459	1	6	50	\N	2021-06-08 00:00:00-04	\N	2	3	2	1	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe06\\6_1623174726627.txt
+460	1	6	50	\N	2021-06-08 00:00:00-04	\N	2	3	2	1	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe06\\6_1623174811585.txt
+461	1	1	50	\N	2021-06-08 00:00:00-04	\N	2	3	2	1	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe01\\1_1623174891712.txt
+466	999999_1106202155533835.txt	8	1	1	2021-06-11 00:00:00-04	\N	1	3	1	17	51	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\importacion\\LOG_1623422677384.txt
+462	1	6	50	\N	2021-06-08 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe06\\6_1623175037081.txt
+463		1	2021-04-01	2021-06-09	2021-06-10 00:00:00-04	\N	4	3	5	17	JRCOBR02	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR02_1623333870938.pdf
+464		1	2021-03-01	2021-06-10	2021-06-10 00:00:00-04	\N	4	3	5	17	JRCOBR02	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR02_1623335653348.pdf
+465		1	2021-06-07	2021-06-11	2021-06-11 00:00:00-04	\N	4	3	5	1	JRCOBR02	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR02_1623419480629.pdf
+467	\N	1	2021-06-11	2021-06-11	2021-06-11 00:00:00-04	\N	4	3	6	17	JRCOBR01	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR01_1623422705627.pdf
+468	\N	1	2021-06-11	2021-06-11	2021-06-11 00:00:00-04	\N	4	3	6	17	JRCOBR03	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR03_1623422710630.pdf
+469	\N	1	2021-06-11	2021-06-11	2021-06-11 00:00:00-04	\N	4	3	6	17	JRCOBR01	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR01_1623424263108.pdf
+470	\N	1	2021-06-11	2021-06-11	2021-06-11 00:00:00-04	\N	4	3	6	17	JRCOBR03	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR03_1623424268121.pdf
+481	999999_1106202155534364.txt	8	1	1	2021-06-11 00:00:00-04	\N	1	3	1	17	52	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\importacion\\LOG_1623434986960.txt
+471	1	14	51	\N	2021-06-11 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe14\\14_1623427489371.txt
+472	1	6	51	\N	2021-06-11 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe06\\6_1623427544089.txt
+473	1	3	51	\N	2021-06-11 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe03\\3_1623427589119.txt
+482	\N	1	2021-06-11	2021-06-11	2021-06-11 00:00:00-04	\N	4	3	6	17	JRCOBR01	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR01_1623434999993.pdf
+474	1	23	51	\N	2021-06-11 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe23\\23_1623427649188.txt
+483	\N	1	2021-06-11	2021-06-11	2021-06-11 00:00:00-04	\N	4	3	6	17	JRCOBR03	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR03_1623435004979.pdf
+475	1	19	51	\N	2021-06-11 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe19\\19_1623427769451.txt
+477	\N	\N	\N	\N	2021-06-11 12:10:04.599-04	\N	2	3	5	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe12\\AF_12_1623427804542.txt
+489	\N	1	2021-06-16	2021-06-16	2021-06-16 00:00:00-04	\N	4	3	6	17	JRCOBR03	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR03_1623858156760.pdf
+476	1	12	51	\N	2021-06-11 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe12\\12_1623427804837.txt
+484	1	30	52	\N	2021-06-11 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe30\\30_1623435171194.txt
+478	1	1	51	\N	2021-06-11 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe01\\1_1623427949724.txt
+479	\N	1	2021-06-11	2021-06-11	2021-06-11 00:00:00-04	\N	4	3	6	1	JRCOBR01	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR01_1623429125782.pdf
+480	\N	1	2021-06-11	2021-06-11	2021-06-11 00:00:00-04	\N	4	3	6	1	JRCOBR03	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR03_1623429130776.pdf
+486	999999_1606202155542683.txt	8	1	1	2021-06-16 00:00:00-04	\N	1	3	1	17	54	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\importacion\\LOG_1623857859205.txt
+485	999999_1606202155542683.txt	8	1	1	2021-06-16 00:00:00-04	\N	1	3	1	17	53	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\importacion\\LOG_1623857140866.txt
+491	1	6	54	\N	2021-06-16 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe06\\6_1623858450040.txt
+487	1	14	54	\N	2021-06-16 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe14\\14_1623858089374.txt
+490	1	30	54	\N	2021-06-16 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe30\\30_1623858409947.txt
+488	\N	1	2021-06-16	2021-06-16	2021-06-16 00:00:00-04	\N	4	3	6	17	JRCOBR01	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR01_1623858151769.pdf
+492	1	3	54	\N	2021-06-16 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe03\\3_1623858515042.txt
+493	1	19	54	\N	2021-06-16 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe19\\19_1623858560168.txt
+494	1	1	54	\N	2021-06-16 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe01\\1_1623858610279.txt
+495	1	23	54	\N	2021-06-16 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe23\\23_1623858755488.txt
+496	1	12	54	\N	2021-06-16 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe12\\12_1623858805811.txt
+497	1	12	54	\N	2021-06-16 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe12\\12_1623859281508.txt
+498	1	23	54	\N	2021-06-16 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe23\\23_1623864433603.txt
+499	1	19	54	\N	2021-06-16 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe19\\19_1623864478480.txt
+503	\N	1	2021-06-21	2021-06-21	2021-06-21 00:00:00-04	\N	4	3	6	17	JRCOBR01	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR01_1624297138895.pdf
+500	1	12	54	\N	2021-06-16 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe12\\12_1623864776603.txt
+501		1	2021-06-16	2021-06-21	2021-06-21 00:00:00-04	\N	4	3	5	17	JRCOBR02	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR02_1624281405342.pdf
+504	\N	1	2021-06-21	2021-06-21	2021-06-21 00:00:00-04	\N	4	3	6	17	JRCOBR03	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR03_1624297143739.pdf
+521	1	3	56	\N	2021-06-22 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe03\\3_1624366423625.txt
+505	1	14	55	\N	2021-06-21 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe14\\14_1624297758292.txt
+506	1	14	55	\N	2021-06-21 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe14\\14_1624297762768.txt
+527	\N	1	2021-07-02	2021-07-02	2021-07-02 00:00:00-04	\N	4	3	6	17	JRCOBR03	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR03_1625232746502.pdf
+507	1	30	55	\N	2021-06-21 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe30\\30_1624297888170.txt
+522	1	14	56	\N	2021-06-22 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe14\\14_1624366638892.txt
+508	1	6	55	\N	2021-06-21 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe06\\6_1624297968439.txt
+509	1	3	55	\N	2021-06-21 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe03\\3_1624298018295.txt
+523		1	2021-06-21	2021-06-23	2021-06-23 00:00:00-04	\N	4	3	5	17	JRCOBR02	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR02_1624473495765.pdf
+510	1	23	55	\N	2021-06-21 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe23\\23_1624298073448.txt
+517	999999_2206202155586689.txt	8	1	1	2021-06-22 00:00:00-04	\N	1	3	1	17	56	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\importacion\\LOG_1624366008410.txt
+502	999999_2106202155584940.txt	8	1	1	2021-06-21 00:00:00-04	\N	1	3	1	17	55	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\importacion\\LOG_1624296850757.txt
+511	1	19	55	\N	2021-06-21 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe19\\19_1624298119111.txt
+512	1	1	55	\N	2021-06-21 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe01\\1_1624298168827.txt
+514	\N	\N	\N	\N	2021-06-21 14:12:30.05-04	\N	2	3	5	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe12\\AF_12_1624299149983.txt
+513	1	12	55	\N	2021-06-21 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe12\\12_1624299150265.txt
+516	\N	\N	\N	\N	2021-06-21 14:15:55.413-04	\N	2	3	5	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe12\\AF_12_1624299355343.txt
+518	\N	1	2021-06-22	2021-06-22	2021-06-22 00:00:00-04	\N	4	3	6	17	JRCOBR01	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR01_1624366056994.pdf
+515	1	12	55	\N	2021-06-21 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe12\\12_1624299355703.txt
+519	\N	1	2021-06-22	2021-06-22	2021-06-22 00:00:00-04	\N	4	3	6	17	JRCOBR03	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR03_1624366062003.pdf
+520	1	30	56	\N	2021-06-22 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe30\\30_1624366383572.txt
+528	999999_0207202155768838.txt	8	1	1	2021-07-02 00:00:00-04	\N	1	3	7	17		\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\importacion\\LOG_1625234809491.txt
+524		1	2021-06-20	2021-06-24	2021-06-25 00:00:00-04	\N	4	3	5	17	JRCOBR02	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR02_1624628472813.pdf
+525		1	2021-06-20	2021-06-25	2021-06-25 00:00:00-04	\N	4	3	5	17	JRCOBR02	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR02_1624634141518.pdf
+526	\N	1	2021-07-02	2021-07-02	2021-07-02 00:00:00-04	\N	4	3	6	17	JRCOBR01	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR01_1625232731301.pdf
+530	\N	1	2021-07-02	2021-07-02	2021-07-02 00:00:00-04	\N	4	3	6	17	JRCOBR01	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR01_1625235705735.pdf
+529	999999_0207202155768838.txt	8	1	1	2021-07-02 00:00:00-04	\N	1	3	1	17	57	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\importacion\\LOG_1625235706970.txt
+531	\N	1	2021-07-02	2021-07-02	2021-07-02 00:00:00-04	\N	4	3	6	17	JRCOBR03	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR03_1625235712412.pdf
+532	1	14	57	\N	2021-07-02 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe14\\14_1625236462565.txt
+533	1	30	57	\N	2021-07-02 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe30\\30_1625236622354.txt
+534	1	6	57	\N	2021-07-02 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe06\\6_1625236832735.txt
+535	1	3	57	\N	2021-07-02 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe03\\3_1625236917789.txt
+536	1	13	57	\N	2021-07-02 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe13\\13_1625236997846.txt
+538	\N	\N	\N	\N	2021-07-02 10:44:23.159-04	\N	2	3	5	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe12\\AF_12_1625237063112.txt
+537	1	12	57	\N	2021-07-02 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe12\\12_1625237063405.txt
+539	1	23	57	\N	2021-07-02 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe23\\23_1625237213236.txt
+540	1	19	57	\N	2021-07-02 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe19\\19_1625237248296.txt
+541	1	1	57	\N	2021-07-02 00:00:00-04	\N	2	3	2	17	\N	\N	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\exportacion\\lafe01\\1_1625237298538.txt
+542	1	13	1625750961_informe.TXT	57	2021-07-08 00:00:00-04	\N	3	3	3	1	3004	0	\N
+543	1	13	1625751216_informe.TXT	57	2021-07-08 00:00:00-04	\N	3	3	3	1	3004	0	\N
+544	1	13	1625751325_informe.TXT	57	2021-07-08 00:00:00-04	\N	3	3	3	1	3004	0	\N
+545	1	13	1625751451_informe.TXT	57	2021-07-08 00:00:00-04	\N	3	3	3	1	3004	0	\N
+546		1	2021-07-08	2021-08-09	2021-07-08 00:00:00-04	\N	4	3	5	1	JRCOBR02	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR02_1625752038029.pdf
+547	\N	1	2021-07-01	2021-07-09	2021-07-08 00:00:00-04	\N	4	3	6	1	JRCOBR01	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR01_1625752078421.pdf
+548	\N	1	2021-07-01	2021-07-09	2021-07-08 00:00:00-04	\N	4	3	6	1	JRCOBR03	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR03_1625752083556.pdf
+549	1	23	1625752522_LISTA3237031.txt	57	2021-07-08 00:00:00-04	\N	3	3	3	1	3017	0	\N
+550	\N	1	2021-07-01	2021-08-01	2021-07-08 00:00:00-04	\N	4	3	6	1	JRCOBR01	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR01_1625762688335.pdf
+551	\N	1	2021-07-01	2021-08-01	2021-07-08 00:00:00-04	\N	4	3	6	1	JRCOBR03	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR03_1625762693135.pdf
+552	19	1	2021-07-01	2021-07-04	2021-07-08 00:00:00-04	\N	4	3	5	1	JRCOBR02	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR02_1625762758213.pdf
+553	12	1	2021-07-01	2021-07-08	2021-07-08 00:00:00-04	\N	4	3	5	17	JRCOBR02	pdf	C:\\Users\\ymedina\\Documents\\Programacion\\Java\\eclipse-workspace\\ColaDeProcesos\\Almacen\\salida\\JRCOBR02_1625766854452.pdf
+\.
+
+
+--
+-- Data for Name: programas; Type: TABLE DATA; Schema: colas; Owner: postgres
+--
+
+COPY colas.programas (nu_programa, tx_programa, st_programa) FROM stdin;
+1	Generaración Cobros	1
+4	Generación Afiliacion	1
+5	Procesamiento de Respuesta de Domicilio	1
+2	Generación de Domicilio	1
+3	Validación de Cobros	1
+6	Reporte de resumen de cobros	1
+7	Error de generacion Cobros	1
+\.
+
+
+--
+-- Data for Name: configuraciones_archivos; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.configuraciones_archivos (id_configuracion, fe_registro, id_banco, id_empresa, id_tipo_archivo, id_usuario, st_configuracion, tx_caracter_separador, tx_formato) FROM stdin;
+\.
+
+
+--
+-- Data for Name: var_retorno; Type: TABLE DATA; Schema: public; Owner: postgres
+--
+
+COPY public.var_retorno (id_cliente) FROM stdin;
+9612
+\.
+
+
+--
+-- Name: afiliados_id_afiliado_seq; Type: SEQUENCE SET; Schema: cobranza; Owner: postgres
+--
+
+SELECT pg_catalog.setval('cobranza.afiliados_id_afiliado_seq', 1, false);
+
+
+--
+-- Name: bancos_id_banco_seq; Type: SEQUENCE SET; Schema: cobranza; Owner: postgres
+--
+
+SELECT pg_catalog.setval('cobranza.bancos_id_banco_seq', 7, true);
+
+
+--
+-- Name: bitacoraarchivos_id_bitacora_seq; Type: SEQUENCE SET; Schema: cobranza; Owner: postgres
+--
+
+SELECT pg_catalog.setval('cobranza.bitacoraarchivos_id_bitacora_seq', 57, true);
+
+
+--
+-- Name: clientes_id_cliente_seq; Type: SEQUENCE SET; Schema: cobranza; Owner: postgres
+--
+
+SELECT pg_catalog.setval('cobranza.clientes_id_cliente_seq', 345, true);
+
+
+--
+-- Name: cobros_id_cobro_seq; Type: SEQUENCE SET; Schema: cobranza; Owner: postgres
+--
+
+SELECT pg_catalog.setval('cobranza.cobros_id_cobro_seq', 543, true);
+
+
+--
+-- Name: cuentas_bancarias_id_cuenta_bancaria_seq; Type: SEQUENCE SET; Schema: cobranza; Owner: postgres
+--
+
+SELECT pg_catalog.setval('cobranza.cuentas_bancarias_id_cuenta_bancaria_seq', 1, false);
+
+
+--
+-- Name: empresas_id_empresa_seq; Type: SEQUENCE SET; Schema: cobranza; Owner: postgres
+--
+
+SELECT pg_catalog.setval('cobranza.empresas_id_empresa_seq', 1, false);
+
+
+--
+-- Name: estatus_id_estatus_seq; Type: SEQUENCE SET; Schema: cobranza; Owner: postgres
+--
+
+SELECT pg_catalog.setval('cobranza.estatus_id_estatus_seq', 1, true);
+
+
+--
+-- Name: tipo_documento_id_tipo_documento_seq; Type: SEQUENCE SET; Schema: cobranza; Owner: postgres
+--
+
+SELECT pg_catalog.setval('cobranza.tipo_documento_id_tipo_documento_seq', 1, false);
+
+
+--
+-- Name: tipos_archivo_id_tipo_archivo_seq; Type: SEQUENCE SET; Schema: cobranza; Owner: postgres
+--
+
+SELECT pg_catalog.setval('cobranza.tipos_archivo_id_tipo_archivo_seq', 1, true);
+
+
+--
+-- Name: usuarios_id_usuario_seq; Type: SEQUENCE SET; Schema: cobranza; Owner: postgres
+--
+
+SELECT pg_catalog.setval('cobranza.usuarios_id_usuario_seq', 1, false);
+
+
+--
+-- Name: ordenes_nu_secuencia_seq; Type: SEQUENCE SET; Schema: colas; Owner: postgres
+--
+
+SELECT pg_catalog.setval('colas.ordenes_nu_secuencia_seq', 553, true);
+
+
+--
+-- Name: programas_nu_programa_seq; Type: SEQUENCE SET; Schema: colas; Owner: postgres
+--
+
+SELECT pg_catalog.setval('colas.programas_nu_programa_seq', 1, false);
+
+
+--
+-- Name: hibernate_sequence; Type: SEQUENCE SET; Schema: public; Owner: postgres
+--
+
+SELECT pg_catalog.setval('public.hibernate_sequence', 17289, true);
+
+
+--
+-- Name: afiliados afiliados_pkey; Type: CONSTRAINT; Schema: cobranza; Owner: postgres
+--
+
+ALTER TABLE ONLY cobranza.afiliados
+    ADD CONSTRAINT afiliados_pkey PRIMARY KEY (id_afiliado);
+
+
+--
+-- Name: bancos bancos_co_banco_key; Type: CONSTRAINT; Schema: cobranza; Owner: postgres
+--
+
+ALTER TABLE ONLY cobranza.bancos
+    ADD CONSTRAINT bancos_co_banco_key UNIQUE (co_banco);
+
+
+--
+-- Name: bancos bancos_pkey; Type: CONSTRAINT; Schema: cobranza; Owner: postgres
+--
+
+ALTER TABLE ONLY cobranza.bancos
+    ADD CONSTRAINT bancos_pkey PRIMARY KEY (id_banco);
+
+
+--
+-- Name: bitacoraarchivos bitacoraarchivos_pkey; Type: CONSTRAINT; Schema: cobranza; Owner: postgres
+--
+
+ALTER TABLE ONLY cobranza.bitacoraarchivos
+    ADD CONSTRAINT bitacoraarchivos_pkey PRIMARY KEY (id_bitacora);
+
+
+--
+-- Name: clientes clientes_pkey; Type: CONSTRAINT; Schema: cobranza; Owner: postgres
+--
+
+ALTER TABLE ONLY cobranza.clientes
+    ADD CONSTRAINT clientes_pkey PRIMARY KEY (id_cliente);
+
+
+--
+-- Name: cobros cobros_pkey; Type: CONSTRAINT; Schema: cobranza; Owner: postgres
+--
+
+ALTER TABLE ONLY cobranza.cobros
+    ADD CONSTRAINT cobros_pkey PRIMARY KEY (id_cobro);
+
+
+--
+-- Name: cuentas_bancarias cuentas_bancarias_pkey; Type: CONSTRAINT; Schema: cobranza; Owner: postgres
+--
+
+ALTER TABLE ONLY cobranza.cuentas_bancarias
+    ADD CONSTRAINT cuentas_bancarias_pkey PRIMARY KEY (id_cuenta_bancaria);
+
+
+--
+-- Name: empresas empresas_pkey; Type: CONSTRAINT; Schema: cobranza; Owner: postgres
+--
+
+ALTER TABLE ONLY cobranza.empresas
+    ADD CONSTRAINT empresas_pkey PRIMARY KEY (id_empresa);
+
+
+--
+-- Name: estatus estatus_pkey; Type: CONSTRAINT; Schema: cobranza; Owner: postgres
+--
+
+ALTER TABLE ONLY cobranza.estatus
+    ADD CONSTRAINT estatus_pkey PRIMARY KEY (id_estatus);
+
+
+--
+-- Name: estructura_archivos estructura_archivos_pkey; Type: CONSTRAINT; Schema: cobranza; Owner: postgres
+--
+
+ALTER TABLE ONLY cobranza.estructura_archivos
+    ADD CONSTRAINT estructura_archivos_pkey PRIMARY KEY (id_estructura_archivo);
+
+
+--
+-- Name: tipo_documento tipo_documento_pkey; Type: CONSTRAINT; Schema: cobranza; Owner: postgres
+--
+
+ALTER TABLE ONLY cobranza.tipo_documento
+    ADD CONSTRAINT tipo_documento_pkey PRIMARY KEY (id_tipo_documento);
+
+
+--
+-- Name: tipos_archivo tipos_archivo_pkey; Type: CONSTRAINT; Schema: cobranza; Owner: postgres
+--
+
+ALTER TABLE ONLY cobranza.tipos_archivo
+    ADD CONSTRAINT tipos_archivo_pkey PRIMARY KEY (id_tipo_archivo);
+
+
+--
+-- Name: usuarios usuarios_pkey; Type: CONSTRAINT; Schema: cobranza; Owner: postgres
+--
+
+ALTER TABLE ONLY cobranza.usuarios
+    ADD CONSTRAINT usuarios_pkey PRIMARY KEY (id_usuario);
+
+
+--
+-- Name: ordenes ordenes_pkey; Type: CONSTRAINT; Schema: colas; Owner: postgres
+--
+
+ALTER TABLE ONLY colas.ordenes
+    ADD CONSTRAINT ordenes_pkey PRIMARY KEY (nu_secuencia);
+
+
+--
+-- Name: programas programas_pkey; Type: CONSTRAINT; Schema: colas; Owner: postgres
+--
+
+ALTER TABLE ONLY colas.programas
+    ADD CONSTRAINT programas_pkey PRIMARY KEY (nu_programa);
+
+
+--
+-- Name: configuraciones_archivos configuraciones_archivos_pkey; Type: CONSTRAINT; Schema: public; Owner: postgres
+--
+
+ALTER TABLE ONLY public.configuraciones_archivos
+    ADD CONSTRAINT configuraciones_archivos_pkey PRIMARY KEY (id_configuracion);
+
+
+--
+-- Name: fki_fk_01; Type: INDEX; Schema: cobranza; Owner: postgres
+--
+
+CREATE INDEX fki_fk_01 ON cobranza.afiliados USING btree (id_banco);
+
+
+--
+-- Name: fki_fk_02; Type: INDEX; Schema: cobranza; Owner: postgres
+--
+
+CREATE INDEX fki_fk_02 ON cobranza.afiliados USING btree (id_empresa);
+
+
+--
+-- Name: fki_fk_03; Type: INDEX; Schema: cobranza; Owner: postgres
+--
+
+CREATE INDEX fki_fk_03 ON cobranza.bancos USING btree (id_usuario);
+
+
+--
+-- Name: fki_fk_04; Type: INDEX; Schema: cobranza; Owner: postgres
+--
+
+CREATE INDEX fki_fk_04 ON cobranza.bitacoraarchivos USING btree (id_empresa);
+
+
+--
+-- Name: fki_fk_05; Type: INDEX; Schema: cobranza; Owner: postgres
+--
+
+CREATE INDEX fki_fk_05 ON cobranza.bitacoraarchivos USING btree (id_usuario);
+
+
+--
+-- Name: fki_fk_07; Type: INDEX; Schema: cobranza; Owner: postgres
+--
+
+CREATE INDEX fki_fk_07 ON cobranza.clientes USING btree (id_banco);
+
+
+--
+-- Name: fki_fk_08; Type: INDEX; Schema: cobranza; Owner: postgres
+--
+
+CREATE INDEX fki_fk_08 ON cobranza.clientes USING btree (id_empresa);
+
+
+--
+-- Name: fki_fk_09; Type: INDEX; Schema: cobranza; Owner: postgres
+--
+
+CREATE INDEX fki_fk_09 ON cobranza.clientes USING btree (id_bitacora);
+
+
+--
+-- Name: fki_fk_10; Type: INDEX; Schema: cobranza; Owner: postgres
+--
+
+CREATE INDEX fki_fk_10 ON cobranza.cobros USING btree (id_cliente);
+
+
+--
+-- Name: fki_fk_11; Type: INDEX; Schema: cobranza; Owner: postgres
+--
+
+CREATE INDEX fki_fk_11 ON cobranza.cuentas_bancarias USING btree (id_banco);
+
+
+--
+-- Name: fki_fk_12; Type: INDEX; Schema: cobranza; Owner: postgres
+--
+
+CREATE INDEX fki_fk_12 ON cobranza.cuentas_bancarias USING btree (id_empresa);
+
+
+--
+-- Name: fki_fk_13; Type: INDEX; Schema: cobranza; Owner: postgres
+--
+
+CREATE INDEX fki_fk_13 ON cobranza.empresas USING btree (id_usuario);
+
+
+--
+-- Name: fki_fk_16; Type: INDEX; Schema: cobranza; Owner: postgres
+--
+
+CREATE INDEX fki_fk_16 ON cobranza.tipos_archivo USING btree (id_usuario);
+
+
+--
+-- Name: fki_id_tipo_archivo_fk; Type: INDEX; Schema: cobranza; Owner: postgres
+--
+
+CREATE INDEX fki_id_tipo_archivo_fk ON cobranza.estructura_archivos USING btree (id_tipo_archivo);
+
+
+--
+-- Name: fki_fk_programas; Type: INDEX; Schema: colas; Owner: postgres
+--
+
+CREATE INDEX fki_fk_programas ON colas.ordenes USING btree (nu_programa);
+
+
+--
+-- Name: cuentas_bancarias cuentas_bancarias_id_banco_fkey; Type: FK CONSTRAINT; Schema: cobranza; Owner: postgres
+--
+
+ALTER TABLE ONLY cobranza.cuentas_bancarias
+    ADD CONSTRAINT cuentas_bancarias_id_banco_fkey FOREIGN KEY (id_banco) REFERENCES cobranza.bancos(co_banco) NOT VALID;
+
+
+--
+-- Name: cuentas_bancarias fk70p0hohg4rflj66obw65iafog; Type: FK CONSTRAINT; Schema: cobranza; Owner: postgres
+--
+
+ALTER TABLE ONLY cobranza.cuentas_bancarias
+    ADD CONSTRAINT fk70p0hohg4rflj66obw65iafog FOREIGN KEY (id_usuario) REFERENCES cobranza.usuarios(id_usuario);
+
+
+--
+-- Name: afiliados fk_01; Type: FK CONSTRAINT; Schema: cobranza; Owner: postgres
+--
+
+ALTER TABLE ONLY cobranza.afiliados
+    ADD CONSTRAINT fk_01 FOREIGN KEY (id_banco) REFERENCES cobranza.bancos(id_banco) NOT VALID;
+
+
+--
+-- Name: afiliados fk_02; Type: FK CONSTRAINT; Schema: cobranza; Owner: postgres
+--
+
+ALTER TABLE ONLY cobranza.afiliados
+    ADD CONSTRAINT fk_02 FOREIGN KEY (id_empresa) REFERENCES cobranza.empresas(id_empresa) NOT VALID;
+
+
+--
+-- Name: bancos fk_03; Type: FK CONSTRAINT; Schema: cobranza; Owner: postgres
+--
+
+ALTER TABLE ONLY cobranza.bancos
+    ADD CONSTRAINT fk_03 FOREIGN KEY (id_usuario) REFERENCES cobranza.usuarios(id_usuario) NOT VALID;
+
+
+--
+-- Name: bitacoraarchivos fk_04; Type: FK CONSTRAINT; Schema: cobranza; Owner: postgres
+--
+
+ALTER TABLE ONLY cobranza.bitacoraarchivos
+    ADD CONSTRAINT fk_04 FOREIGN KEY (id_empresa) REFERENCES cobranza.empresas(id_empresa) NOT VALID;
+
+
+--
+-- Name: bitacoraarchivos fk_05; Type: FK CONSTRAINT; Schema: cobranza; Owner: postgres
+--
+
+ALTER TABLE ONLY cobranza.bitacoraarchivos
+    ADD CONSTRAINT fk_05 FOREIGN KEY (id_usuario) REFERENCES cobranza.usuarios(id_usuario) NOT VALID;
+
+
+--
+-- Name: clientes fk_08; Type: FK CONSTRAINT; Schema: cobranza; Owner: postgres
+--
+
+ALTER TABLE ONLY cobranza.clientes
+    ADD CONSTRAINT fk_08 FOREIGN KEY (id_empresa) REFERENCES cobranza.empresas(id_empresa) NOT VALID;
+
+
+--
+-- Name: clientes fk_09; Type: FK CONSTRAINT; Schema: cobranza; Owner: postgres
+--
+
+ALTER TABLE ONLY cobranza.clientes
+    ADD CONSTRAINT fk_09 FOREIGN KEY (id_bitacora) REFERENCES cobranza.bitacoraarchivos(id_bitacora) NOT VALID;
+
+
+--
+-- Name: cobros fk_10; Type: FK CONSTRAINT; Schema: cobranza; Owner: postgres
+--
+
+ALTER TABLE ONLY cobranza.cobros
+    ADD CONSTRAINT fk_10 FOREIGN KEY (id_cliente) REFERENCES cobranza.clientes(id_cliente) NOT VALID;
+
+
+--
+-- Name: cuentas_bancarias fk_12; Type: FK CONSTRAINT; Schema: cobranza; Owner: postgres
+--
+
+ALTER TABLE ONLY cobranza.cuentas_bancarias
+    ADD CONSTRAINT fk_12 FOREIGN KEY (id_empresa) REFERENCES cobranza.empresas(id_empresa) NOT VALID;
+
+
+--
+-- Name: tipos_archivo fk_16; Type: FK CONSTRAINT; Schema: cobranza; Owner: postgres
+--
+
+ALTER TABLE ONLY cobranza.tipos_archivo
+    ADD CONSTRAINT fk_16 FOREIGN KEY (id_usuario) REFERENCES cobranza.usuarios(id_usuario) NOT VALID;
+
+
+--
+-- Name: usuarios fkgrju3u0utt7909j9yap1oacng; Type: FK CONSTRAINT; Schema: cobranza; Owner: postgres
+--
+
+ALTER TABLE ONLY cobranza.usuarios
+    ADD CONSTRAINT fkgrju3u0utt7909j9yap1oacng FOREIGN KEY (id_empresa) REFERENCES cobranza.empresas(id_empresa);
+
+
+--
+-- Name: empresas fksmn095vrpr2rqcq7vf6l8voqj; Type: FK CONSTRAINT; Schema: cobranza; Owner: postgres
+--
+
+ALTER TABLE ONLY cobranza.empresas
+    ADD CONSTRAINT fksmn095vrpr2rqcq7vf6l8voqj FOREIGN KEY (id_empresa) REFERENCES cobranza.empresas(id_empresa);
+
+
+--
+-- Name: estructura_archivos id_tipo_archivo_fk; Type: FK CONSTRAINT; Schema: cobranza; Owner: postgres
+--
+
+ALTER TABLE ONLY cobranza.estructura_archivos
+    ADD CONSTRAINT id_tipo_archivo_fk FOREIGN KEY (id_tipo_archivo) REFERENCES cobranza.tipos_archivo(id_tipo_archivo) NOT VALID;
+
+
+--
+-- Name: ordenes fk_programas; Type: FK CONSTRAINT; Schema: colas; Owner: postgres
+--
+
+ALTER TABLE ONLY colas.ordenes
+    ADD CONSTRAINT fk_programas FOREIGN KEY (nu_programa) REFERENCES colas.programas(nu_programa) NOT VALID;
+
+
+--
+-- PostgreSQL database dump complete
+--
+
